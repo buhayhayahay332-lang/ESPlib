@@ -11,8 +11,6 @@ local CoreGui     = cloneref(game:GetService("CoreGui"))
 
 local LocalPlayer = cloneref(Players.LocalPlayer)
 
--- camera re-read each frame instead of captured once
--- prevents stale reference if camera changes
 local function GetCamera()
 	return Workspace.CurrentCamera
 end
@@ -174,7 +172,6 @@ local function hasTeamHighlight(model)
 	if not model then
 		return false
 	end
-	-- use cloneref'd Workspace instead of raw workspace global
 	for _, child in pairs(Workspace:GetChildren()) do
 		if child:IsA("Highlight") and child.Adornee == model then
 			return true
@@ -514,7 +511,6 @@ local function CreateESP(CharacterModel)
 			return
 		end
 
-		-- re-read camera each frame
 		local Camera = GetCamera()
 		local Pos, OnScreen = Camera:WorldToScreenPoint(torso.Position)
 		local Dist = (Camera.CFrame.Position - torso.Position).Magnitude / 3.5714285714
