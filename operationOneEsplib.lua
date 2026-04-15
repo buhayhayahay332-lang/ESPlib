@@ -321,7 +321,13 @@ if CoreGui:FindFirstChild("ESPHolder") then
 	CoreGui["ESPHolder"]:Destroy()
 end
 
-local ScreenGui = Functions:Create("ScreenGui", { Parent = CoreGui, Name = "ESPHolder" })
+local parentGui = (gethui and gethui()) or CoreGui
+
+local ScreenGui = Functions:Create("ScreenGui", {
+    Parent = parentGui,
+    Name = "ESPHolder"
+})
+
 
 local function CreateESP(CharacterModel)
 	if not CharacterModel then
