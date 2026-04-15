@@ -1,0 +1,654 @@
+local OperatorESP = {}
+
+local cloneref = cloneref or function(obj) return obj end
+local clonefunc = clonefunc or function(func) return func end
+
+local Players = cloneref(game:GetService("Players"))
+local RunService = cloneref(game:GetService("RunService"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local gameMetatable = getrawmetatable(game)
+local old_namecall = gameMetatable.__namecall
+local old_index = gameMetatable.__index
+local old_newindex = gameMetatable.__newindex
+
+local oldInstanceNew = clonefunc(Instance.new)
+local oldDrawingNew = clonefunc(Drawing.new)
+local oldFindFirstChild = clonefunc(game.FindFirstChild)
+local oldIsA = clonefunc(game.IsA)
+
+OperatorESP.Settings = {
+    enabled = true,
+    team_check = true,
+    box_color = Color3.fromRGB(255, 0, 0),
+    box_thickness = 2,
+    skeleton_enabled = true,
+    skeleton_color = Color3.fromRGB(255, 255, 255),
+    skeleton_thickness = 1,
+    chams_enabled = true,
+    chams_team_check = true,
+    chams_enemy_color = Color3.fromRGB(255, 80, 80),
+    chams_team_color = Color3.fromRGB(80, 160, 255),
+    chams_fill_transparency = 0.5,
+    chams_outline_color = Color3.fromRGB(255, 255, 255),
+    chams_outline_transparency = 0,
+    chams_always_on_top = true,
+    name_enabled = false,
+    name_color = Color3.fromRGB(255, 255, 255),
+    distance_enabled = false,
+    health_bar_enabled = false,
+    tracers_enabled = false,
+    tracer_color = Color3.fromRGB(255, 255, 255),
+    tracer_thickness = 1,
+    tracer_from = "Bottom"
+}
+
+OperatorESP.ESPObjects = {}
+OperatorESP.Connections = {}
+
+local function protectedCall(func, ...)
+    local success, result = pcall(func, ...)
+    return success and result or nil
+end
+
+local function IsAlive(player)
+    return player and player.Character and oldFindFirstChild(player.Character, "Humanoid") and player.Character.Humanoid.Health > 0
+end
+
+local function IsTeammate(player)
+    if not OperatorESP.Settings.team_check then return false end
+    return player.Team == LocalPlayer.Team
+end
+
+local function GetTeamColor(player)
+    if OperatorESP.Settings.chams_team_check then
+        if IsTeammate(player) then
+            return OperatorESP.Settings.chams_team_color
+        else
+            return OperatorESP.Settings.chams_enemy_color
+        end
+    else
+        return OperatorESP.Settings.chams_enemy_color
+    end
+end
+
+local function CreateDrawing(type, properties)
+    local drawing = oldDrawingNew(type)
+    for prop, value in pairs(properties) do
+        drawing[prop] = value
+    end
+    return drawing
+end
+
+function OperatorESP:CreateBoxESP(character)
+    local drawings = {
+        TopLeft = CreateDrawing("Line", {
+            Thickness = self.Settings.box_thickness,
+            Color = self.Settings.box_color,
+            Visible = false
+        }),
+        TopRight = CreateDrawing("Line", {
+            Thickness = self.Settings.box_thickness,
+            Color = self.Settings.box_color,
+            Visible = false
+        }),
+        BottomLeft = CreateDrawing("Line", {
+            Thickness = self.Settings.box_thickness,
+            Color = self.Settings.box_color,
+            Visible = false
+        }),
+        BottomRight = CreateDrawing("Line", {
+            Thickness = self.Settings.box_thickness,
+            Color = self.Settings.box_color,
+            Visible = false
+        })
+    }
+    
+    return drawings
+end
+
+function OperatorESP:UpdateBoxESP(character, drawings)
+    local rootPart = oldFindFirstChild(character, "HumanoidRootPart")
+    if not rootPart then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    local size = character:GetExtentsSize()
+    local topCFrame = rootPart.CFrame * CFrame.new(0, size.Y / 2, 0)
+    local bottomCFrame = rootPart.CFrame * CFrame.new(0, -size.Y / 2, 0)
+    
+    local topLeft = Camera:WorldToViewportPoint((topCFrame * CFrame.new(-size.X / 2, 0, 0)).Position)
+    local topRight = Camera:WorldToViewportPoint((topCFrame * CFrame.new(size.X / 2, 0, 0)).Position)
+    local bottomLeft = Camera:WorldToViewportPoint((bottomCFrame * CFrame.new(-size.X / 2, 0, 0)).Position)
+    local bottomRight = Camera:WorldToViewportPoint((bottomCFrame * CFrame.new(size.X / 2, 0, 0)).Position)
+    
+    if topLeft.Z > 0 then
+        drawings.TopLeft.From = Vector2.new(topLeft.X, topLeft.Y)
+        drawings.TopLeft.To = Vector2.new(topRight.X, topRight.Y)
+        drawings.TopLeft.Visible = true
+        
+        drawings.TopRight.From = Vector2.new(topRight.X, topRight.Y)
+        drawings.TopRight.To = Vector2.new(bottomRight.X, bottomRight.Y)
+        drawings.TopRight.Visible = true
+        
+        drawings.BottomRight.From = Vector2.new(bottomRight.X, bottomRight.Y)
+        drawings.BottomRight.To = Vector2.new(bottomLeft.X, bottomLeft.Y)
+        drawings.BottomRight.Visible = true
+        
+        drawings.BottomLeft.From = Vector2.new(bottomLeft.X, bottomLeft.Y)
+        drawings.BottomLeft.To = Vector2.new(topLeft.X, topLeft.Y)
+        drawings.BottomLeft.Visible = true
+    else
+        for _, drawing in pairs(drawings) do
+            drawing.Visible = false
+        end
+    end
+end
+
+function OperatorESP:CreateSkeletonESP(character)
+    local lines = {}
+    local connections = {
+        {"Head", "UpperTorso"},
+        {"UpperTorso", "LowerTorso"},
+        {"UpperTorso", "LeftUpperArm"},
+        {"LeftUpperArm", "LeftLowerArm"},
+        {"LeftLowerArm", "LeftHand"},
+        {"UpperTorso", "RightUpperArm"},
+        {"RightUpperArm", "RightLowerArm"},
+        {"RightLowerArm", "RightHand"},
+        {"LowerTorso", "LeftUpperLeg"},
+        {"LeftUpperLeg", "LeftLowerLeg"},
+        {"LeftLowerLeg", "LeftFoot"},
+        {"LowerTorso", "RightUpperLeg"},
+        {"RightUpperLeg", "RightLowerLeg"},
+        {"RightLowerLeg", "RightFoot"}
+    }
+    
+    for i = 1, #connections do
+        lines[i] = CreateDrawing("Line", {
+            Thickness = self.Settings.skeleton_thickness,
+            Color = self.Settings.skeleton_color,
+            Visible = false
+        })
+    end
+    
+    return {lines = lines, connections = connections}
+end
+
+function OperatorESP:UpdateSkeletonESP(character, skeleton)
+    for i, connection in ipairs(skeleton.connections) do
+        local part1 = oldFindFirstChild(character, connection[1])
+        local part2 = oldFindFirstChild(character, connection[2])
+        
+        if part1 and part2 then
+            local pos1, onScreen1 = Camera:WorldToViewportPoint(part1.Position)
+            local pos2, onScreen2 = Camera:WorldToViewportPoint(part2.Position)
+            
+            if onScreen1 and onScreen2 then
+                skeleton.lines[i].From = Vector2.new(pos1.X, pos1.Y)
+                skeleton.lines[i].To = Vector2.new(pos2.X, pos2.Y)
+                skeleton.lines[i].Visible = true
+            else
+                skeleton.lines[i].Visible = false
+            end
+        else
+            skeleton.lines[i].Visible = false
+        end
+    end
+end
+
+function OperatorESP:CreateChams(character, player)
+    local highlight = protectedCall(oldInstanceNew, "Highlight")
+    if not highlight then return nil end
+    
+    local randomName = game:GetService("HttpService"):GenerateGUID(false):sub(1, 8)
+    highlight.Name = randomName
+    
+    protectedCall(function()
+        highlight.FillColor = GetTeamColor(player)
+        highlight.OutlineColor = self.Settings.chams_outline_color
+        highlight.FillTransparency = self.Settings.chams_fill_transparency
+        highlight.OutlineTransparency = self.Settings.chams_outline_transparency
+        highlight.DepthMode = self.Settings.chams_always_on_top and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        highlight.Adornee = character
+    end)
+    
+    local coreGui = cloneref(game:GetService("CoreGui"))
+    protectedCall(function()
+        highlight.Parent = coreGui
+    end)
+    
+    table.insert(self.ChamsList, highlight)
+    
+    return highlight
+end
+
+function OperatorESP:UpdateChams(character, highlight, player)
+    if highlight and highlight.Parent then
+        protectedCall(function()
+            highlight.FillColor = GetTeamColor(player)
+            highlight.OutlineColor = self.Settings.chams_outline_color
+            highlight.FillTransparency = self.Settings.chams_fill_transparency
+            highlight.OutlineTransparency = self.Settings.chams_outline_transparency
+            highlight.DepthMode = self.Settings.chams_always_on_top and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+            highlight.Adornee = character
+        end)
+    end
+end
+
+function OperatorESP:CreateNameESP(character, player)
+    local text = CreateDrawing("Text", {
+        Text = player.Name,
+        Size = 16,
+        Center = true,
+        Outline = true,
+        Color = self.Settings.name_color,
+        Visible = false
+    })
+    
+    return text
+end
+
+function OperatorESP:UpdateNameESP(character, text, player)
+    local rootPart = oldFindFirstChild(character, "HumanoidRootPart")
+    if not rootPart then return end
+    
+    local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position + Vector3.new(0, 3, 0))
+    
+    if onScreen then
+        text.Position = Vector2.new(pos.X, pos.Y)
+        text.Visible = true
+    else
+        text.Visible = false
+    end
+end
+
+function OperatorESP:CreateHealthBar(character)
+    local outline = CreateDrawing("Square", {
+        Thickness = 1,
+        Filled = false,
+        Color = Color3.new(0, 0, 0),
+        Visible = false
+    })
+    
+    local bar = CreateDrawing("Square", {
+        Thickness = 1,
+        Filled = true,
+        Color = Color3.new(0, 1, 0),
+        Visible = false
+    })
+    
+    return {outline = outline, bar = bar}
+end
+
+function OperatorESP:UpdateHealthBar(character, healthBar)
+    local rootPart = oldFindFirstChild(character, "HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not rootPart or not humanoid then return end
+    
+    local size = character:GetExtentsSize()
+    local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+    
+    if onScreen then
+        local barHeight = 100
+        local barWidth = 4
+        local offset = 6
+        
+        healthBar.outline.Size = Vector2.new(barWidth + 2, barHeight + 2)
+        healthBar.outline.Position = Vector2.new(pos.X - size.X - offset - 1, pos.Y - barHeight / 2 - 1)
+        healthBar.outline.Visible = true
+        
+        local healthPercent = humanoid.Health / humanoid.MaxHealth
+        healthBar.bar.Size = Vector2.new(barWidth, barHeight * healthPercent)
+        healthBar.bar.Position = Vector2.new(pos.X - size.X - offset, pos.Y + barHeight / 2 - barHeight * healthPercent)
+        healthBar.bar.Color = Color3.new(1 - healthPercent, healthPercent, 0)
+        healthBar.bar.Visible = true
+    else
+        healthBar.outline.Visible = false
+        healthBar.bar.Visible = false
+    end
+end
+
+function OperatorESP:CreateTracer(character)
+    local line = CreateDrawing("Line", {
+        Thickness = self.Settings.tracer_thickness,
+        Color = self.Settings.tracer_color,
+        Visible = false
+    })
+    
+    return line
+end
+
+function OperatorESP:UpdateTracer(character, line)
+    local rootPart = oldFindFirstChild(character, "HumanoidRootPart")
+    if not rootPart then return end
+    
+    local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+    
+    if onScreen then
+        local fromPos
+        if self.Settings.tracer_from == "Bottom" then
+            fromPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        elseif self.Settings.tracer_from == "Top" then
+            fromPos = Vector2.new(Camera.ViewportSize.X / 2, 0)
+        else
+            fromPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        end
+        
+        line.From = fromPos
+        line.To = Vector2.new(pos.X, pos.Y)
+        line.Visible = true
+    else
+        line.Visible = false
+    end
+end
+
+function OperatorESP:CreateDistanceESP(character)
+    local text = CreateDrawing("Text", {
+        Text = "",
+        Size = 14,
+        Center = true,
+        Outline = true,
+        Color = Color3.new(1, 1, 1),
+        Visible = false
+    })
+    
+    return text
+end
+
+function OperatorESP:UpdateDistanceESP(character, text)
+    local rootPart = oldFindFirstChild(character, "HumanoidRootPart")
+    local localRoot = LocalPlayer.Character and oldFindFirstChild(LocalPlayer.Character, "HumanoidRootPart")
+    if not rootPart or not localRoot then return end
+    
+    local distance = (rootPart.Position - localRoot.Position).Magnitude
+    local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+    
+    if onScreen then
+        text.Text = string.format("[%d studs]", math.floor(distance))
+        text.Position = Vector2.new(pos.X, pos.Y)
+        text.Visible = true
+    else
+        text.Visible = false
+    end
+end
+
+function OperatorESP:ApplyToCharacter(character, player)
+    if not character or not player then return end
+    if player == LocalPlayer then return end
+    if IsTeammate(player) and self.Settings.team_check then return end
+    
+    self:RemoveESP(player)
+    
+    local espData = {
+        player = player,
+        character = character,
+        box = nil,
+        skeleton = nil,
+        chams = nil,
+        name = nil,
+        healthBar = nil,
+        tracer = nil,
+        distance = nil
+    }
+    
+    if self.Settings.enabled then
+        espData.box = self:CreateBoxESP(character)
+    end
+    
+    if self.Settings.skeleton_enabled then
+        espData.skeleton = self:CreateSkeletonESP(character)
+    end
+    
+    if self.Settings.chams_enabled then
+        espData.chams = self:CreateChams(character, player)
+    end
+    
+    if self.Settings.name_enabled then
+        espData.name = self:CreateNameESP(character, player)
+    end
+    
+    if self.Settings.health_bar_enabled then
+        espData.healthBar = self:CreateHealthBar(character)
+    end
+    
+    if self.Settings.tracers_enabled then
+        espData.tracer = self:CreateTracer(character)
+    end
+    
+    if self.Settings.distance_enabled then
+        espData.distance = self:CreateDistanceESP(character)
+    end
+    
+    self.ESPObjects[player] = espData
+end
+
+function OperatorESP:UpdateESP()
+    for player, espData in pairs(self.ESPObjects) do
+        if not IsAlive(player) or not espData.character or not espData.character.Parent then
+            self:RemoveESP(player)
+            continue
+        end
+        
+        if espData.box and self.Settings.enabled then
+            self:UpdateBoxESP(espData.character, espData.box)
+        end
+        
+        if espData.skeleton and self.Settings.skeleton_enabled then
+            self:UpdateSkeletonESP(espData.character, espData.skeleton)
+        end
+        
+        if espData.chams and self.Settings.chams_enabled then
+            self:UpdateChams(espData.character, espData.chams, player)
+        end
+        
+        if espData.name and self.Settings.name_enabled then
+            self:UpdateNameESP(espData.character, espData.name, player)
+        end
+        
+        if espData.healthBar and self.Settings.health_bar_enabled then
+            self:UpdateHealthBar(espData.character, espData.healthBar)
+        end
+        
+        if espData.tracer and self.Settings.tracers_enabled then
+            self:UpdateTracer(espData.character, espData.tracer)
+        end
+        
+        if espData.distance and self.Settings.distance_enabled then
+            self:UpdateDistanceESP(espData.character, espData.distance)
+        end
+    end
+end
+
+function OperatorESP:RemoveESP(player)
+    local espData = self.ESPObjects[player]
+    if not espData then return end
+    
+    if espData.box then
+        for _, drawing in pairs(espData.box) do
+            pcall(function() drawing:Remove() end)
+        end
+    end
+    
+    if espData.skeleton then
+        for _, line in pairs(espData.skeleton.lines) do
+            pcall(function() line:Remove() end)
+        end
+    end
+    
+    if espData.chams then
+        pcall(function() espData.chams:Destroy() end)
+    end
+    
+    if espData.name then
+        pcall(function() espData.name:Remove() end)
+    end
+    
+    if espData.healthBar then
+        pcall(function() espData.healthBar.outline:Remove() end)
+        pcall(function() espData.healthBar.bar:Remove() end)
+    end
+    
+    if espData.tracer then
+        pcall(function() espData.tracer:Remove() end)
+    end
+    
+    if espData.distance then
+        pcall(function() espData.distance:Remove() end)
+    end
+    
+    self.ESPObjects[player] = nil
+end
+
+function OperatorESP:SetupHooks()
+    setreadonly(gameMetatable, false)
+    
+    gameMetatable.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if method == "Kick" or method == "kick" then
+            return nil
+        end
+        
+        if method == "GetChildren" or method == "GetDescendants" then
+            local result = old_namecall(self, ...)
+            local filtered = {}
+            
+            for _, v in pairs(result) do
+                if not (oldIsA(v, "Highlight") and table.find(OperatorESP.ChamsList, v)) then
+                    table.insert(filtered, v)
+                end
+            end
+            
+            return filtered
+        end
+        
+        return old_namecall(self, ...)
+    end)
+    
+    gameMetatable.__index = newcclosure(function(self, key)
+        local result = old_index(self, key)
+        
+        if oldIsA(self, "Player") and key == "Character" and result then
+            task.defer(function()
+                if OperatorESP.Settings.enabled and not OperatorESP.ESPObjects[self] then
+                    OperatorESP:ApplyToCharacter(result, self)
+                end
+            end)
+        end
+        
+        return result
+    end)
+    
+    gameMetatable.__newindex = newcclosure(function(self, key, value)
+        if oldIsA(self, "Highlight") and table.find(OperatorESP.ChamsList, self) then
+            if key == "Parent" and value == nil then
+            end
+        end
+        
+        return old_newindex(self, key, value)
+    end)
+    
+    setreadonly(gameMetatable, true)
+end
+
+function OperatorESP:SetupConnections()
+    table.insert(self.Connections, Players.PlayerAdded:Connect(function(player)
+        if player == LocalPlayer then return end
+        
+        player.CharacterAdded:Connect(function(character)
+            task.wait(0.1)
+            if IsAlive(player) then
+                self:ApplyToCharacter(character, player)
+            end
+        end)
+        
+        if player.Character then
+            self:ApplyToCharacter(player.Character, player)
+        end
+    end))
+    
+    table.insert(self.Connections, Players.PlayerRemoving:Connect(function(player)
+        self:RemoveESP(player)
+    end))
+    
+    table.insert(self.Connections, RunService.RenderStepped:Connect(function()
+        self:UpdateESP()
+    end))
+end
+
+function OperatorESP:Init()
+    self:SetupHooks()
+    self:SetupConnections()
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            self:ApplyToCharacter(player.Character, player)
+        end
+    end
+    
+    print("[OperatorESP] Bypassed initialization complete!")
+end
+
+function OperatorESP:Destroy()
+    for _, connection in pairs(self.Connections) do
+        connection:Disconnect()
+    end
+    
+    for player, _ in pairs(self.ESPObjects) do
+        self:RemoveESP(player)
+    end
+    
+    for _, highlight in pairs(self.ChamsList) do
+        pcall(function() highlight:Destroy() end)
+    end
+    
+    setreadonly(gameMetatable, false)
+    gameMetatable.__namecall = old_namecall
+    gameMetatable.__index = old_index
+    gameMetatable.__newindex = old_newindex
+    setreadonly(gameMetatable, true)
+    
+    print("[OperatorESP] Destroyed!")
+end
+
+function OperatorESP:ToggleESP(enabled)
+    self.Settings.enabled = enabled
+    if not enabled then
+        for player, espData in pairs(self.ESPObjects) do
+            if espData.box then
+                for _, drawing in pairs(espData.box) do
+                    drawing.Visible = false
+                end
+            end
+        end
+    end
+end
+
+function OperatorESP:ToggleSkeleton(enabled)
+    self.Settings.skeleton_enabled = enabled
+    if not enabled then
+        for player, espData in pairs(self.ESPObjects) do
+            if espData.skeleton then
+                for _, line in pairs(espData.skeleton.lines) do
+                    line.Visible = false
+                end
+            end
+        end
+    end
+end
+
+function OperatorESP:ToggleChams(enabled)
+    self.Settings.chams_enabled = enabled
+    for player, espData in pairs(self.ESPObjects) do
+        if espData.chams then
+            espData.chams.Enabled = enabled
+        end
+    end
+end
+
+return OperatorESP
