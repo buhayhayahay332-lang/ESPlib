@@ -47,6 +47,7 @@ OperatorESP.Settings = {
 
 OperatorESP.ESPObjects = {}
 OperatorESP.Connections = {}
+OperatorESP.ChamsList = {}
 
 local function protectedCall(func, ...)
     local success, result = pcall(func, ...)
@@ -216,9 +217,9 @@ function OperatorESP:CreateChams(character, player)
         highlight.Adornee = character
     end)
     
-    local coreGui = cloneref(game:GetService("CoreGui"))
     protectedCall(function()
-        highlight.Parent = coreGui
+        local hui = gethui and gethui()
+    highlight.Parent = hui or cloneref(game:GetService("CoreGui"))
     end)
     
     table.insert(self.ChamsList, highlight)
@@ -510,9 +511,7 @@ function OperatorESP:SetupHooks()
         local method = getnamecallmethod()
         local args = {...}
         
-        if method == "Kick" or method == "kick" then
-            return nil
-        end
+      
         
         if method == "GetChildren" or method == "GetDescendants" then
             local result = old_namecall(self, ...)
