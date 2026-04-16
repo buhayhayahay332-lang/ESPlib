@@ -165,13 +165,25 @@ local function getProjectedModelBounds(model)
     local maxX, maxY = -math.huge, -math.huge
     local any = false
 
-    -- Stable box mode: use only core body parts so climb/animation doesn't balloon the box.
-    local parts = {
+    local widthParts = {
         model:FindFirstChild("head"),
         model:FindFirstChild("torso"),
     }
+    local heightParts = {
+        model:FindFirstChild("head"),
+        model:FindFirstChild("torso"),
+        model:FindFirstChild("hip1"),
+        model:FindFirstChild("hip2"),
+        model:FindFirstChild("leg1"),
+        model:FindFirstChild("leg2"),
+    }
 
-    for _, d in ipairs(parts) do
+    local widthSet = {}
+    for _, p in ipairs(widthParts) do
+        if p then widthSet[p] = true end
+    end
+
+    for _, d in ipairs(heightParts) do
         if d and d:IsA("BasePart") and d.Transparency < 1 then
             local half = d.Size * 0.5
             local corners = {
@@ -189,11 +201,24 @@ local function getProjectedModelBounds(model)
                 local p, on = _Camera:WorldToViewportPoint(worldPos)
                 if on and p.Z > 0 then
                     any = true
-                    if p.X < minX then minX = p.X end
                     if p.Y < minY then minY = p.Y end
-                    if p.X > maxX then maxX = p.X end
                     if p.Y > maxY then maxY = p.Y end
+                    if widthSet[d] then
+                        if p.X < minX then minX = p.X end
+                        if p.X > maxX then maxX = p.X end
+                    end
                 end
+            end
+        end
+    end
+
+    if minX == math.huge or maxX == -math.huge then
+        local torso = model:FindFirstChild("torso")
+        if torso and torso:IsA("BasePart") then
+            local p, on = _Camera:WorldToViewportPoint(torso.Position)
+            if on and p.Z > 0 then
+                minX = p.X - 8
+                maxX = p.X + 8
             end
         end
     end
