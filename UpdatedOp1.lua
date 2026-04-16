@@ -7,6 +7,7 @@ local Workspace  = cloneref(game:GetService("Workspace"))
 local RunService = cloneref(game:GetService("RunService"))
 local Players    = cloneref(game:GetService("Players"))
 local CoreGui    = cloneref(game:GetService("CoreGui"))
+local GuiService = cloneref(game:GetService("GuiService"))
 
 local LocalPlayer = cloneref(Players.LocalPlayer)
 
@@ -97,6 +98,8 @@ local _Camera   = nil
 local _CamPos   = nil
 local _ViewSize = nil
 local _Tick     = nil
+local _GuiInsetY = 0
+local ScreenGui = nil
 
 
 local Functions = {}
@@ -349,6 +352,7 @@ local function ProcessESP(model, espData)
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math.min(cLen, w * 0.2, h * 0.2)
+    local yInset = _GuiInsetY or 0
 
     local chams = el.Chams
     chams.Adornee      = model
@@ -364,18 +368,18 @@ local function ProcessESP(model, espData)
 
     local cv = ESP.Drawing.Boxes.Corner.Enabled
     local cc = ESP.Drawing.Boxes.Corner.RGB
-    el.LTH.Visible = cv  el.LTH.Position = UDim2.new(0, x0,               0, y0)                el.LTH.Size = UDim2.new(0, dynCL,  0, cThick) el.LTH.BackgroundColor3 = cc
-    el.LTV.Visible = cv  el.LTV.Position = UDim2.new(0, x0,               0, y0)                el.LTV.Size = UDim2.new(0, cThick, 0, dynCL)  el.LTV.BackgroundColor3 = cc
-    el.RTH.Visible = cv  el.RTH.Position = UDim2.new(0, x1 - dynCL,      0, y0)                el.RTH.Size = UDim2.new(0, dynCL,  0, cThick) el.RTH.BackgroundColor3 = cc
-    el.RTV.Visible = cv  el.RTV.Position = UDim2.new(0, x1 - cThick,     0, y0)                el.RTV.Size = UDim2.new(0, cThick, 0, dynCL)  el.RTV.BackgroundColor3 = cc
-    el.LBH.Visible = cv  el.LBH.Position = UDim2.new(0, x0,               0, y1 - cThick)       el.LBH.Size = UDim2.new(0, dynCL,  0, cThick) el.LBH.BackgroundColor3 = cc
-    el.LBV.Visible = cv  el.LBV.Position = UDim2.new(0, x0,               0, y1 - dynCL)        el.LBV.Size = UDim2.new(0, cThick, 0, dynCL)  el.LBV.BackgroundColor3 = cc
-    el.RBH.Visible = cv  el.RBH.Position = UDim2.new(0, x1 - dynCL,      0, y1 - cThick)       el.RBH.Size = UDim2.new(0, dynCL,  0, cThick) el.RBH.BackgroundColor3 = cc
-    el.RBV.Visible = cv  el.RBV.Position = UDim2.new(0, x1 - cThick,     0, y1 - dynCL)        el.RBV.Size = UDim2.new(0, cThick, 0, dynCL)  el.RBV.BackgroundColor3 = cc
+    el.LTH.Visible = cv  el.LTH.Position = UDim2.new(0, x0,               0, y0 - yInset)                el.LTH.Size = UDim2.new(0, dynCL,  0, cThick) el.LTH.BackgroundColor3 = cc
+    el.LTV.Visible = cv  el.LTV.Position = UDim2.new(0, x0,               0, y0 - yInset)                el.LTV.Size = UDim2.new(0, cThick, 0, dynCL)  el.LTV.BackgroundColor3 = cc
+    el.RTH.Visible = cv  el.RTH.Position = UDim2.new(0, x1 - dynCL,      0, y0 - yInset)                el.RTH.Size = UDim2.new(0, dynCL,  0, cThick) el.RTH.BackgroundColor3 = cc
+    el.RTV.Visible = cv  el.RTV.Position = UDim2.new(0, x1 - cThick,     0, y0 - yInset)                el.RTV.Size = UDim2.new(0, cThick, 0, dynCL)  el.RTV.BackgroundColor3 = cc
+    el.LBH.Visible = cv  el.LBH.Position = UDim2.new(0, x0,               0, y1 - cThick - yInset)       el.LBH.Size = UDim2.new(0, dynCL,  0, cThick) el.LBH.BackgroundColor3 = cc
+    el.LBV.Visible = cv  el.LBV.Position = UDim2.new(0, x0,               0, y1 - dynCL - yInset)        el.LBV.Size = UDim2.new(0, cThick, 0, dynCL)  el.LBV.BackgroundColor3 = cc
+    el.RBH.Visible = cv  el.RBH.Position = UDim2.new(0, x1 - dynCL,      0, y1 - cThick - yInset)       el.RBH.Size = UDim2.new(0, dynCL,  0, cThick) el.RBH.BackgroundColor3 = cc
+    el.RBV.Visible = cv  el.RBV.Position = UDim2.new(0, x1 - cThick,     0, y1 - dynCL - yInset)        el.RBV.Size = UDim2.new(0, cThick, 0, dynCL)  el.RBV.BackgroundColor3 = cc
 
     local full   = ESP.Drawing.Boxes.Full.Enabled
     local filled = ESP.Drawing.Boxes.Filled.Enabled
-    el.Box.Position = UDim2.new(0, x0, 0, y0)
+    el.Box.Position = UDim2.new(0, x0, 0, y0 - yInset)
     el.Box.Size     = UDim2.new(0, w,  0, h)
     el.Box.Visible  = full or (cv and filled)
     el.Box.BackgroundTransparency = filled and ESP.Drawing.Boxes.Filled.Transparency or 1
@@ -402,7 +406,7 @@ local function ProcessESP(model, espData)
         end
         el.Name.Text       = string.format('(<font color="rgb(255,255,255)">T</font>) %s', nameText)
         el.Name.TextColor3 = ESP.Drawing.Names.RGB
-        el.Name.Position   = UDim2.new(0, Pos.X, 0, y0 - 9)
+        el.Name.Position   = UDim2.new(0, Pos.X, 0, y0 - 9 - yInset)
     end
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
@@ -411,7 +415,7 @@ local function ProcessESP(model, espData)
         if wm then
             el.Weapon.Text       = wm.Name
             el.Weapon.TextColor3 = ESP.Drawing.Weapons.RGB
-            el.Weapon.Position   = UDim2.new(0, Pos.X, 0, y1 + 9)
+            el.Weapon.Position   = UDim2.new(0, Pos.X, 0, y1 + 9 - yInset)
         else
             el.Weapon.Visible = false
         end
@@ -433,6 +437,18 @@ local function StartMasterLoop()
         _CamPos   = _Camera.CFrame.Position
         _ViewSize = _Camera.ViewportSize
         _Tick     = tick()
+        local okInset, inset = pcall(function()
+            return GuiService:GetGuiInset()
+        end)
+        if okInset and inset then
+            if ScreenGui and ScreenGui.IgnoreGuiInset then
+                _GuiInsetY = 0
+            else
+                _GuiInsetY = inset.Y
+            end
+        else
+            _GuiInsetY = 0
+        end
 
         for model, espData in pairs(ActiveESPs) do
             ProcessESP(model, espData)
@@ -445,7 +461,10 @@ end
 
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
-local parentGui   = (gethui and gethui()) or CoreGui
+local parentGui   = CoreGui
+if not parentGui and gethui then
+    parentGui = gethui()
+end
 
 local function cleanupESPGuids(container)
     if not container then return end
@@ -461,7 +480,7 @@ if parentGui ~= CoreGui then
     cleanupESPGuids(parentGui)
 end
 
-local ScreenGui = Functions:Create("ScreenGui", {
+ScreenGui = Functions:Create("ScreenGui", {
     Parent        = parentGui,
     Name          = guiHideName,
     ResetOnSpawn  = false,
