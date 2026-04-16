@@ -383,6 +383,16 @@ local function ProcessESP(model, espData)
     local w = math.max(2, x1 - x0)
     local h = math.max(2, y1 - y0)
 
+    -- Loosen the box so it is less tight on the body.
+    local padX = math.max(2, w * 0.06)
+    local padY = math.max(2, h * 0.04)
+    x0 = x0 - padX
+    x1 = x1 + padX
+    y0 = y0 - padY
+    y1 = y1 + padY
+    w = math.max(2, x1 - x0)
+    h = math.max(2, y1 - y0)
+
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math.min(cLen, w * 0.2, h * 0.2)
