@@ -11,7 +11,6 @@ local GuiService = cloneref(game:GetService("GuiService"))
 
 local LocalPlayer = cloneref(Players.LocalPlayer)
 
-
 local ESP = {
     Enabled     = false,
     MaxDistance = 1000,
@@ -68,31 +67,14 @@ local ESP = {
                 Length    = 15,
             },
         },
-        Skeleton = {
-            Enabled   = false,
-            RGB       = Color3.fromRGB(255, 255, 255),
-            Thickness = 1,
-        },
         TeamCheck = {
             Enabled = false,
         },
     },
 }
 
-local BONE_CONNECTIONS = {
-    { "torso", "shoulder1" }, { "torso", "shoulder2" },
-    { "torso", "hip1" },      { "torso", "hip2" },
-    { "torso", "head" },
-    { "shoulder1", "arm1" },  { "shoulder2", "arm2" },
-    { "hip1", "leg1" },       { "hip2", "leg2" },
-}
-local BONE_COUNT = #BONE_CONNECTIONS
-
-
 local ESPCounter         = 0
 local ActiveESPs         = {}
-local ActiveSkeletons    = {}
-local TeamHighlightCache = {}
 local MasterConnection   = nil
 local ScreenGui          = nil
 
@@ -116,9 +98,7 @@ local math_cos      = math.cos
 local math_atan     = math.atan
 local math_sin      = math.sin
 local math_pi       = math.pi
-local math_exp      = math.exp
 local string_format = string.format
-
 
 local Functions = {}
 
@@ -136,37 +116,16 @@ local function getModelID(model)
     return nil
 end
 
-local function hasTeamHighlight(model)
-    if not model then return false end
-    local cached = TeamHighlightCache[model]
-    if cached ~= nil then return cached end
-
-    local modelId = getModelID(model)
-    for _, child in pairs(Workspace:GetChildren()) do
-        if child:IsA("Highlight") then
-            local ad = child.Adornee
-            if ad == model then
-                TeamHighlightCache[model] = true
-                return true
-            end
-            if modelId and ad and ad:IsA("Model") and getModelID(ad) == modelId then
-                TeamHighlightCache[model] = true
-                return true
-            end
-        end
-    end
-    TeamHighlightCache[model] = false
-    return false
+-- Team check using actual Teams
+local function isTeammate(player)
+    if not LocalPlayer or not player then return false end
+    local localTeam = LocalPlayer.Team
+    local targetTeam = player.Team
+    if not localTeam or not targetTeam then return false end
+    return localTeam == targetTeam
 end
 
-Workspace.ChildAdded:Connect(function(c)
-    if c:IsA("Highlight") then table.clear(TeamHighlightCache) end
-end)
-Workspace.ChildRemoved:Connect(function(c)
-    if c:IsA("Highlight") then table.clear(TeamHighlightCache) end
-end)
-
-local _playerNameCache = {}  
+local _playerNameCache = {}
 
 Players.PlayerAdded:Connect(function(p)
     _playerNameCache[p.UserId] = p.Name
@@ -178,17 +137,17 @@ for _, p in pairs(Players:GetPlayers()) do
     _playerNameCache[p.UserId] = p.Name
 end
 
-local function getPlayerNameFromModel(model)
+local function getPlayerFromModel(model)
     local id = getModelID(model)
     if id then
-        local cached = _playerNameCache[id]
-        if cached then return cached end
-        local plr = Players:GetPlayerByUserId(id)
-        if plr then
-            _playerNameCache[id] = plr.Name
-            return plr.Name
-        end
+        return Players:GetPlayerByUserId(id)
     end
+    return nil
+end
+
+local function getPlayerNameFromModel(model)
+    local plr = getPlayerFromModel(model)
+    if plr then return plr.Name end
     local n = model.Name
     if n ~= "Viewmodel" and n ~= "LocalViewmodel" then
         return n
@@ -207,15 +166,6 @@ local function isValidCharacterTarget(model)
     local hum = model:FindFirstChildOfClass("Humanoid")
     local hrp = model:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp or not hrp:IsA("BasePart") then return false end
-    return true
-end
-
-local function isValidViewmodel(model)
-    if not model or not model.Parent then return false end
-    if model.Name == "LocalViewmodel" then return false end
-    if not Viewmodels or model.Parent ~= Viewmodels then return false end
-    local torso = model:FindFirstChild("torso")
-    if not torso or not torso:IsA("BasePart") then return false end
     return true
 end
 
@@ -257,106 +207,6 @@ local function getProjectedCharacterBounds(model, hrp, humanoid)
     return cx - w * 0.5, y0, cx + w * 0.5, y1
 end
 
-
-local function createSkeletonESP(character)
-    if not character or ActiveSkeletons[character] then return end
-    if not isValidViewmodel(character) then return end
-
-    local bones = {}
-    local required = { "torso","head","shoulder1","shoulder2","arm1","arm2","hip1","hip2","leg1","leg2" }
-    for _, name in ipairs(required) do
-        local b = character:FindFirstChild(name)
-        if not b or not b:IsA("BasePart") then return end
-        bones[name] = b
-    end
-
-    local lines = {}
-    local skRGB   = ESP.Drawing.Skeleton.RGB
-    local skThick = ESP.Drawing.Skeleton.Thickness
-    for i = 1, BONE_COUNT do
-        local line = Drawing.new("Line")
-        line.Visible      = false
-        line.Color        = skRGB
-        line.Thickness    = skThick
-        line.Transparency = 1
-        lines[i] = line
-    end
-
-    ActiveSkeletons[character] = { lines = lines, bones = bones }
-end
-
-local function removeSkeleton(character)
-    local sd = ActiveSkeletons[character]
-    if not sd then return end
-    local lines = sd.lines
-    for i = 1, #lines do
-        local l = lines[i]
-        l.Visible = false
-        l:Remove()
-    end
-    ActiveSkeletons[character] = nil
-end
-
-function Functions:CleanAllSkeletons()
-    for model in pairs(ActiveSkeletons) do
-        removeSkeleton(model)
-    end
-end
-
-
-local function ProcessSkeleton(character, skData)
-    local lines = skData.lines
-
-    local function hideLines()
-        for i = 1, #lines do lines[i].Visible = false end
-    end
-
-    if not ESP.Enabled or not ESP.Drawing.Skeleton.Enabled then hideLines() return end
-    if not character or not character.Parent then
-        hideLines()
-        for i = 1, #lines do lines[i]:Remove() end
-        ActiveSkeletons[character] = nil
-        return
-    end
-    if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(character) then hideLines() return end
-
-    local bones = skData.bones
-    local torso  = bones["torso"]
-    if not torso or torso.Transparency >= 1 then hideLines() return end
-
-    local torsoPos = torso.Position
-    local dx = torsoPos.X - _CamPos.X
-    local dy = torsoPos.Y - _CamPos.Y
-    local dz = torsoPos.Z - _CamPos.Z
-    if dx*dx + dy*dy + dz*dz > _MaxDistSq then hideLines() return end
-
-    local skColor = ESP.Drawing.Skeleton.RGB
-    local skThick = ESP.Drawing.Skeleton.Thickness
-    local cam     = _Camera
-
-    for i = 1, BONE_COUNT do
-        local conn = BONE_CONNECTIONS[i]
-        local b1, b2 = bones[conn[1]], bones[conn[2]]
-        local line   = lines[i]
-        if b1 and b2 then
-            local p1, on1 = cam:WorldToViewportPoint(b1.Position)
-            local p2, on2 = cam:WorldToViewportPoint(b2.Position)
-            if on1 and on2 then
-                line.From      = V2(p1.X, p1.Y)
-                line.To        = V2(p2.X, p2.Y)
-                line.Color     = skColor
-                line.Thickness = skThick
-                line.Visible   = true
-            else
-                line.Visible = false
-            end
-        else
-            line.Visible = false
-        end
-    end
-end
-
-
 local function ProcessESP(model, espData)
     local el = espData.elements
 
@@ -384,7 +234,13 @@ local function ProcessESP(model, espData)
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     local hrp      = model:FindFirstChild("HumanoidRootPart")
     if not humanoid or humanoid.Health <= 0 or not hrp then Hide() return end
-    if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(model) then Hide() return end
+
+    -- Team check using actual Teams
+    local player = getPlayerFromModel(model)
+    if ESP.Drawing.TeamCheck.Enabled and player and isTeammate(player) then
+        Hide()
+        return
+    end
 
     local hrpPos = hrp.Position
     local dx = hrpPos.X - _CamPos.X
@@ -506,7 +362,6 @@ local function ProcessESP(model, espData)
     end
 end
 
-
 local function StartMasterLoop()
     if MasterConnection then
         MasterConnection:Disconnect()
@@ -547,12 +402,8 @@ local function StartMasterLoop()
         for model, espData in next, ActiveESPs do
             ProcessESP(model, espData)
         end
-        for model, skData in next, ActiveSkeletons do
-            ProcessSkeleton(model, skData)
-        end
     end)
 end
-
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui   = gethui and gethui() or CoreGui
@@ -580,7 +431,6 @@ pcall(function()
     if syn and syn.protect_gui then syn.protect_gui(ScreenGui)
     elseif protect_gui then protect_gui(ScreenGui) end
 end)
-
 
 function CreateESP(CharacterModel)
     if not CharacterModel then return end
@@ -698,13 +548,11 @@ function CreateESP(CharacterModel)
     }
 end
 
-
 function Functions:CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
         ActiveESPs[model] = nil
     end
-    self:CleanAllSkeletons()
 end
 
 ESP.RefreshESPs = function()
@@ -723,71 +571,10 @@ end
 
 ESP.CleanAllESPs = function() Functions:CleanAllESPs() end
 
-
-local function MonitorViewmodels()
-    if not Viewmodels then return end
-
-    for _, v in pairs(Viewmodels:GetChildren()) do
-        if v:IsA("Model") and ESP.Drawing.Skeleton.Enabled then
-            task.defer(createSkeletonESP, v)
-        end
-    end
-
-    Viewmodels.ChildAdded:Connect(function(v)
-        if v:IsA("Model") and ESP.Drawing.Skeleton.Enabled then
-            task.defer(createSkeletonESP, v)
-        end
-    end)
-
-    Viewmodels.ChildRemoved:Connect(function(v)
-        removeSkeleton(v)
-        TeamHighlightCache[v] = nil
-    end)
-end
-
-
-ESP.ToggleSkeleton = function(enabled)
-    ESP.Drawing.Skeleton.Enabled = enabled
-    if not enabled then
-        Functions:CleanAllSkeletons()
-    else
-        if Viewmodels then
-            for _, model in pairs(Viewmodels:GetChildren()) do
-                if model:IsA("Model") and isValidViewmodel(model) then
-                    createSkeletonESP(model)
-                end
-            end
-        end
-    end
-end
-
-ESP.SetSkeletonColor = function(color)
-    if typeof(color) ~= "Color3" then return end
-    ESP.Drawing.Skeleton.RGB = color
-    for _, sd in pairs(ActiveSkeletons) do
-        if sd and sd.lines then
-            for _, line in ipairs(sd.lines) do line.Color = color end
-        end
-    end
-end
-
-ESP.SetSkeletonThickness = function(thickness)
-    if type(thickness) ~= "number" or thickness <= 0 then return end
-    ESP.Drawing.Skeleton.Thickness = thickness
-    for _, sd in pairs(ActiveSkeletons) do
-        if sd and sd.lines then
-            for _, line in ipairs(sd.lines) do line.Thickness = thickness end
-        end
-    end
-end
-
 ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length = l end end
 
-
-
-MonitorViewmodels()
 StartMasterLoop()
 
 return ESP
