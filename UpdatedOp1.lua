@@ -11,7 +11,6 @@ local CoreGui    = cloneref(game:GetService("CoreGui"))
 local LocalPlayer = cloneref(Players.LocalPlayer)
 
 
-
 local ESP = {
     Enabled     = false,
     MaxDistance = 1000,
@@ -88,10 +87,9 @@ local BONE_CONNECTIONS = {
 }
 
 
-
 local ESPCounter      = 0
-local ActiveESPs      = {}  
-local ActiveSkeletons = {}  
+local ActiveESPs      = {} 
+local ActiveSkeletons = {} 
 local TeamHighlightCache = {} 
 local MasterConnection = nil
 
@@ -99,7 +97,6 @@ local _Camera   = nil
 local _CamPos   = nil
 local _ViewSize = nil
 local _Tick     = nil
-
 
 
 local Functions = {}
@@ -127,7 +124,6 @@ local function hasTeamHighlight(model)
     TeamHighlightCache[model] = false
     return false
 end
-
 
 Workspace.ChildAdded:Connect(function(child)
     if child:IsA("Highlight") then
@@ -159,7 +155,6 @@ local function findWeaponInCharacter(character)
     end
     return nil
 end
-
 
 
 local function createSkeletonESP(character)
@@ -306,31 +301,16 @@ local function ProcessESP(model, espData)
         el.RBH.BackgroundTransparency = inv  el.RBV.BackgroundTransparency = inv
     end
 
-    local cf, size = model:GetBoundingBox()
-    
-    local topWorld = cf.Position + Vector3.new(0, size.Y / 2, 0)
-    local bottomWorld = cf.Position - Vector3.new(0, size.Y / 2, 0)
-    
-    local topPos, topOnScreen = _Camera:WorldToViewportPoint(topWorld)
-    local bottomPos, bottomOnScreen = _Camera:WorldToViewportPoint(bottomWorld)
-    
-    if not topOnScreen or not bottomOnScreen then
-        Hide()
-        return
-    end
-    
-    local h = math.abs(topPos.Y - bottomPos.Y)
-    local w = h / 2
-    
-    local x0 = topPos.X - w / 2
-    local y0 = topPos.Y
-    local x1 = topPos.X + w / 2
-    local y1 = bottomPos.Y
-    
+    -- ── Scale ─────────────────────────────────────────────────────────────
+    local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
+    local w  = 2.5  * scaleFactor
+    local h  = 4.75 * scaleFactor
+    local vOff = h * 0.175
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math.min(cLen, w * 0.2, h * 0.2)
-
+    local x0, y0 = Pos.X - w * 0.5, Pos.Y - h * 0.5 + vOff
+    local x1, y1 = Pos.X + w * 0.5, Pos.Y + h * 0.5 + vOff
 
     local chams = el.Chams
     chams.Adornee      = model
@@ -398,7 +378,6 @@ local function ProcessESP(model, espData)
             el.Weapon.Visible = false
         end
     end
-
 
     if ESP.Drawing.Skeleton.Enabled and not ActiveSkeletons[model] then
         createSkeletonESP(model)
@@ -572,7 +551,6 @@ local function CreateESP(CharacterModel)
 end
 
 
-
 function Functions:CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
@@ -606,7 +584,6 @@ local function MonitorViewmodels()
     viewmodels.ChildAdded:Connect(function(v)
         if v:IsA("Model") then
             task.defer(CreateESP, v)
-            -- skeleton spawned here, not inside the loop
             if ESP.Drawing.Skeleton.Enabled then
                 task.defer(createSkeletonESP, v)
             end
@@ -623,6 +600,7 @@ local function MonitorViewmodels()
         TeamHighlightCache[v] = nil
     end)
 end
+
 
 
 ESP.ToggleSkeleton = function(enabled)
@@ -664,7 +642,6 @@ end
 ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length    = l end end
-
 
 MonitorViewmodels()
 StartMasterLoop()
