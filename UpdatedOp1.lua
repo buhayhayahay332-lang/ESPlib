@@ -165,21 +165,14 @@ local function getProjectedModelBounds(model)
     local maxX, maxY = -math.huge, -math.huge
     local any = false
 
-    local function shouldSkipPart(part)
-        if not part or not part:IsA("BasePart") then return true end
-        if part.Transparency >= 1 then return true end
-        local p = part.Parent
-        while p and p ~= model do
-            if p:IsA("Model") and p:GetAttribute("item_type") then
-                return true -- weapon/item model; don't inflate player bounds
-            end
-            p = p.Parent
-        end
-        return false
-    end
+    -- Stable box mode: use only core body parts so climb/animation doesn't balloon the box.
+    local parts = {
+        model:FindFirstChild("head"),
+        model:FindFirstChild("torso"),
+    }
 
-    for _, d in ipairs(model:GetDescendants()) do
-        if not shouldSkipPart(d) then
+    for _, d in ipairs(parts) do
+        if d and d:IsA("BasePart") and d.Transparency < 1 then
             local half = d.Size * 0.5
             local corners = {
                 d.CFrame * Vector3.new(-half.X, -half.Y, -half.Z),
