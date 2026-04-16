@@ -158,6 +158,57 @@ local function findWeaponInCharacter(character)
     return nil
 end
 
+local function getProjectedModelBounds(model)
+    if not model then return nil end
+
+    local minX, minY = math.huge, math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local any = false
+
+    local function shouldSkipPart(part)
+        if not part or not part:IsA("BasePart") then return true end
+        if part.Transparency >= 1 then return true end
+        local p = part.Parent
+        while p and p ~= model do
+            if p:IsA("Model") and p:GetAttribute("item_type") then
+                return true -- weapon/item model; don't inflate player bounds
+            end
+            p = p.Parent
+        end
+        return false
+    end
+
+    for _, d in ipairs(model:GetDescendants()) do
+        if not shouldSkipPart(d) then
+            local half = d.Size * 0.5
+            local corners = {
+                d.CFrame * Vector3.new(-half.X, -half.Y, -half.Z),
+                d.CFrame * Vector3.new(-half.X, -half.Y,  half.Z),
+                d.CFrame * Vector3.new(-half.X,  half.Y, -half.Z),
+                d.CFrame * Vector3.new(-half.X,  half.Y,  half.Z),
+                d.CFrame * Vector3.new( half.X, -half.Y, -half.Z),
+                d.CFrame * Vector3.new( half.X, -half.Y,  half.Z),
+                d.CFrame * Vector3.new( half.X,  half.Y, -half.Z),
+                d.CFrame * Vector3.new( half.X,  half.Y,  half.Z),
+            }
+
+            for _, worldPos in ipairs(corners) do
+                local p, on = _Camera:WorldToViewportPoint(worldPos)
+                if on and p.Z > 0 then
+                    any = true
+                    if p.X < minX then minX = p.X end
+                    if p.Y < minY then minY = p.Y end
+                    if p.X > maxX then maxX = p.X end
+                    if p.Y > maxY then maxY = p.Y end
+                end
+            end
+        end
+    end
+
+    if not any then return nil end
+    return minX, minY, maxX, maxY
+end
+
 
 local function createSkeletonESP(character)
     if not character or ActiveSkeletons[character] then return end
@@ -303,50 +354,16 @@ local function ProcessESP(model, espData)
         el.RBH.BackgroundTransparency = inv  el.RBV.BackgroundTransparency = inv
     end
 
-    local w, h
-    local x0, y0, x1, y1
-
-    local okBB, bbCf, bbSize = pcall(function()
-        return model:GetBoundingBox()
-    end)
-
-    if okBB and bbCf and bbSize then
-        local hx, hy, hz = bbSize.X * 0.5, bbSize.Y * 0.5, bbSize.Z * 0.5
-        local minX, minY = math.huge, math.huge
-        local maxX, maxY = -math.huge, -math.huge
-        local anyPoint = false
-
-        for _, dx in ipairs({ -1, 1 }) do
-            for _, dy in ipairs({ -1, 1 }) do
-                for _, dz in ipairs({ -1, 1 }) do
-                    local worldPos = (bbCf * CFrame.new(dx * hx, dy * hy, dz * hz)).Position
-                    local p, onScreenCorner = _Camera:WorldToViewportPoint(worldPos)
-                    if onScreenCorner and p.Z > 0 then
-                        anyPoint = true
-                        if p.X < minX then minX = p.X end
-                        if p.Y < minY then minY = p.Y end
-                        if p.X > maxX then maxX = p.X end
-                        if p.Y > maxY then maxY = p.Y end
-                    end
-                end
-            end
-        end
-
-        if anyPoint then
-            x0, y0 = minX, minY
-            x1, y1 = maxX, maxY
-            w = math.max(2, x1 - x0)
-            h = math.max(2, y1 - y0)
-        end
-    end
-
-    if not w or not h then
+    local x0, y0, x1, y1 = getProjectedModelBounds(model)
+    if not x0 then
         local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
-        w = 2.5  * scaleFactor
-        h = 4.75 * scaleFactor
-        x0, y0 = Pos.X - w * 0.5, Pos.Y - h * 0.5
-        x1, y1 = Pos.X + w * 0.5, Pos.Y + h * 0.5
+        local fw = 2.5  * scaleFactor
+        local fh = 4.75 * scaleFactor
+        x0, y0 = Pos.X - fw * 0.5, Pos.Y - fh * 0.5
+        x1, y1 = Pos.X + fw * 0.5, Pos.Y + fh * 0.5
     end
+    local w = math.max(2, x1 - x0)
+    local h = math.max(2, y1 - y0)
 
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
