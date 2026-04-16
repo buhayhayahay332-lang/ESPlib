@@ -111,12 +111,11 @@ function Functions:Create(Class, Properties)
 end
 
 local function hasTeamHighlight(model)
+    if not model then
+        return false
+    end
     if TeamHighlightCache[model] ~= nil then
         return TeamHighlightCache[model]
-    end
-    if not model then
-        TeamHighlightCache[model] = false
-        return false
     end
     for _, child in pairs(Workspace:GetChildren()) do
         if child:IsA("Highlight") and child.Adornee == model then
@@ -130,12 +129,18 @@ end
 
 Workspace.ChildAdded:Connect(function(child)
     if child:IsA("Highlight") then
-        TeamHighlightCache[child.Adornee] = nil
+        local adornee = child.Adornee
+        if adornee ~= nil then
+            TeamHighlightCache[adornee] = nil
+        end
     end
 end)
 Workspace.ChildRemoved:Connect(function(child)
     if child:IsA("Highlight") then
-        TeamHighlightCache[child.Adornee] = nil
+        local adornee = child.Adornee
+        if adornee ~= nil then
+            TeamHighlightCache[adornee] = nil
+        end
     end
 end)
 
