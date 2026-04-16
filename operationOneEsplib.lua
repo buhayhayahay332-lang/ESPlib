@@ -9,8 +9,9 @@ local Players    = cloneref(game:GetService("Players"))
 local CoreGui    = cloneref(game:GetService("CoreGui"))
 local GuiService = cloneref(game:GetService("GuiService"))
 
-local LocalPlayer = cloneref(Players.LocalPlayer)
-
+local function getLocalPlayer()
+    return Players.LocalPlayer or cloneref(Players.LocalPlayer)
+end
 
 local ESP = {
     Enabled     = false,
@@ -88,7 +89,6 @@ local BONE_CONNECTIONS = {
 }
 local BONE_COUNT = #BONE_CONNECTIONS
 
-
 local ESPCounter         = 0
 local ActiveESPs         = {}
 local ActiveSkeletons    = {}
@@ -116,9 +116,7 @@ local math_cos      = math.cos
 local math_atan     = math.atan
 local math_sin      = math.sin
 local math_pi       = math.pi
-local math_exp      = math.exp
 local string_format = string.format
-
 
 local Functions = {}
 
@@ -203,7 +201,8 @@ local function isValidCharacterTarget(model)
     if Viewmodels and model.Parent == Viewmodels then return false end
     local id = getModelID(model)
     if not id then return false end
-    if LocalPlayer and id == LocalPlayer.UserId then return false end
+    local lp = getLocalPlayer()
+    if lp and id == lp.UserId then return false end
     local hum = model:FindFirstChildOfClass("Humanoid")
     local hrp = model:FindFirstChild("HumanoidRootPart")
     if not hum or not hrp or not hrp:IsA("BasePart") then return false end
@@ -257,7 +256,6 @@ local function getProjectedCharacterBounds(model, hrp, humanoid)
     return cx - w * 0.5, y0, cx + w * 0.5, y1
 end
 
-
 local function createSkeletonESP(character)
     if not character or ActiveSkeletons[character] then return end
     if not isValidViewmodel(character) then return end
@@ -302,7 +300,6 @@ function Functions:CleanAllSkeletons()
         removeSkeleton(model)
     end
 end
-
 
 local function ProcessSkeleton(character, skData)
     local lines = skData.lines
@@ -356,7 +353,6 @@ local function ProcessSkeleton(character, skData)
     end
 end
 
-
 local function ProcessESP(model, espData)
     local el = espData.elements
 
@@ -373,7 +369,17 @@ local function ProcessESP(model, espData)
 
     if not ESP.Enabled then Hide() return end
 
-    if not model or not model.Parent or not isValidCharacterTarget(model) then
+    if not model or not model.Parent then
+        Hide()
+        task.defer(function()
+            if espData.folder then espData.folder:Destroy() end
+            ActiveESPs[model] = nil
+        end)
+        return
+    end
+    
+    if not isValidCharacterTarget(model) then
+        Hide()
         task.defer(function()
             if espData.folder then espData.folder:Destroy() end
             ActiveESPs[model] = nil
@@ -383,7 +389,11 @@ local function ProcessESP(model, espData)
 
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     local hrp      = model:FindFirstChild("HumanoidRootPart")
-    if not humanoid or humanoid.Health <= 0 or not hrp then Hide() return end
+    if not humanoid or humanoid.Health <= 0 or not hrp then
+        Hide()
+        return
+    end
+    
     if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(model) then Hide() return end
 
     local hrpPos = hrp.Position
@@ -435,13 +445,16 @@ local function ProcessESP(model, espData)
     chams.FillColor    = ESP.Drawing.Chams.FillRGB
     chams.OutlineColor = ESP.Drawing.Chams.OutlineRGB
     chams.DepthMode    = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
-    if ESP.Drawing.Chams.Enabled and ESP.Drawing.Chams.Thermal then
-        local b = math_atan(math_sin(_Tick * 2)) * 2 / math_pi
-        chams.FillTransparency    = (ESP.Drawing.Chams.Fill_Transparency    / 100) * (1 - b * 0.1)
-        chams.OutlineTransparency = (ESP.Drawing.Chams.Outline_Transparency / 100)
-    else
-        chams.FillTransparency    = ESP.Drawing.Chams.Fill_Transparency    / 100
-        chams.OutlineTransparency = ESP.Drawing.Chams.Outline_Transparency / 100
+    
+    if ESP.Drawing.Chams.Enabled then
+        if ESP.Drawing.Chams.Thermal then
+            local b = math_atan(math_sin(_Tick * 2)) * 2 / math_pi
+            chams.FillTransparency    = (ESP.Drawing.Chams.Fill_Transparency / 100) * (1 - b * 0.1)
+            chams.OutlineTransparency = (ESP.Drawing.Chams.Outline_Transparency / 100)
+        else
+            chams.FillTransparency    = ESP.Drawing.Chams.Fill_Transparency / 100
+            chams.OutlineTransparency = ESP.Drawing.Chams.Outline_Transparency / 100
+        end
     end
 
     local cv = ESP.Drawing.Boxes.Corner.Enabled
@@ -506,7 +519,6 @@ local function ProcessESP(model, espData)
     end
 end
 
-
 local function StartMasterLoop()
     if MasterConnection then
         MasterConnection:Disconnect()
@@ -532,8 +544,9 @@ local function StartMasterLoop()
 
         if _Tick - _lastCharScan > 1 then
             _lastCharScan = _Tick
+            local lp = getLocalPlayer()
             for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character then
+                if plr ~= lp and plr.Character then
                     task.defer(CreateESP, plr.Character)
                 end
             end
@@ -552,7 +565,6 @@ local function StartMasterLoop()
         end
     end)
 end
-
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui   = gethui and gethui() or CoreGui
@@ -580,7 +592,6 @@ pcall(function()
     if syn and syn.protect_gui then syn.protect_gui(ScreenGui)
     elseif protect_gui then protect_gui(ScreenGui) end
 end)
-
 
 function CreateESP(CharacterModel)
     if not CharacterModel then return end
@@ -698,7 +709,6 @@ function CreateESP(CharacterModel)
     }
 end
 
-
 function Functions:CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
@@ -709,8 +719,9 @@ end
 
 ESP.RefreshESPs = function()
     Functions:CleanAllESPs()
+    local lp = getLocalPlayer()
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
+        if plr ~= lp and plr.Character then
             task.defer(CreateESP, plr.Character)
         end
     end
@@ -722,7 +733,6 @@ ESP.RefreshESPs = function()
 end
 
 ESP.CleanAllESPs = function() Functions:CleanAllESPs() end
-
 
 local function MonitorViewmodels()
     if not Viewmodels then return end
@@ -744,7 +754,6 @@ local function MonitorViewmodels()
         TeamHighlightCache[v] = nil
     end)
 end
-
 
 ESP.ToggleSkeleton = function(enabled)
     ESP.Drawing.Skeleton.Enabled = enabled
@@ -784,8 +793,6 @@ end
 ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length = l end end
-
-
 
 MonitorViewmodels()
 StartMasterLoop()
