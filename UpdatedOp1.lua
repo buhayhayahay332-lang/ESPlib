@@ -301,45 +301,16 @@ local function ProcessESP(model, espData)
         el.RBH.BackgroundTransparency = inv  el.RBV.BackgroundTransparency = inv
     end
 
-      local cf, size = model:GetBoundingBox()
-    if not cf or not size then
-        Hide()
-        return
-    end
-    
-    local topWorld = cf.Position + Vector3.new(0, size.Y / 2, 0)
-    local bottomWorld = cf.Position - Vector3.new(0, size.Y / 2, 0)
-    
-    local topPos, topOnScreen = _Camera:WorldToViewportPoint(topWorld)
-    local bottomPos, bottomOnScreen = _Camera:WorldToViewportPoint(bottomWorld)
-    
-    if not topOnScreen or not bottomOnScreen then
-        Hide()
-        return
-    end
-    
-    if not topPos or not bottomPos then
-        Hide()
-        return
-    end
-    
-    local h = math.abs(topPos.Y - bottomPos.Y)
-    local w = h / 2
-    
-    if h <= 0 or w <= 0 then
-        Hide()
-        return
-    end
-    
-    local x0 = topPos.X - w / 2
-    local y0 = math.min(topPos.Y, bottomPos.Y)
-    local x1 = topPos.X + w / 2
-    local y1 = math.max(topPos.Y, bottomPos.Y)
-    
+    -- ── Scale ─────────────────────────────────────────────────────────────
+    local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
+    local w  = 2.5  * scaleFactor
+    local h  = 4.75 * scaleFactor
+    local vOff = h * 0.175
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math.min(cLen, w * 0.2, h * 0.2)
-
+    local x0, y0 = Pos.X - w * 0.5, Pos.Y - h * 0.5 + vOff
+    local x1, y1 = Pos.X + w * 0.5, Pos.Y + h * 0.5 + vOff
 
     local chams = el.Chams
     chams.Adornee      = model
