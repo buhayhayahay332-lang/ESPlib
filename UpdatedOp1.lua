@@ -129,18 +129,12 @@ end
 
 Workspace.ChildAdded:Connect(function(child)
     if child:IsA("Highlight") then
-        local adornee = child.Adornee
-        if adornee ~= nil then
-            TeamHighlightCache[adornee] = nil
-        end
+        table.clear(TeamHighlightCache)
     end
 end)
 Workspace.ChildRemoved:Connect(function(child)
     if child:IsA("Highlight") then
-        local adornee = child.Adornee
-        if adornee ~= nil then
-            TeamHighlightCache[adornee] = nil
-        end
+        table.clear(TeamHighlightCache)
     end
 end)
 
