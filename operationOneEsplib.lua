@@ -45,7 +45,7 @@ local ESP = {
             Full   = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255) },
             Corner = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255), Thickness = 1, Length = 15 },
         },
-        TeamCheck = { Enabled = false }, -- uses Reveal attribute
+        TeamCheck = { Enabled = false }, -- uses Roblox Teams
     },
 }
 
@@ -80,10 +80,11 @@ local function Create(Class, Properties)
     return inst
 end
 
--- Get numeric ID from model attribute
+-- Get numeric ID from model attribute (can be "ID" or "UserId")
 local function getModelID(model)
     if not model then return nil end
     local id = model:GetAttribute("ID")
+    if id == nil then id = model:GetAttribute("UserId") end
     if type(id) == "number" then return math_floor(id) end
     if type(id) == "string" then return tonumber(id) end
     return nil
@@ -98,10 +99,34 @@ local function getPlayerFromModel(model)
     return nil
 end
 
--- Team check using Reveal attribute (true = teammate)
-local function isTeammateByReveal(model)
-    local reveal = model:GetAttribute("Reveal")
-    return reveal == true
+-- NEW: Real player detection – Archivable == false AND has ID attribute
+local function isRealPlayerModel(model)
+    if not model then return false end
+    -- Must have an ID (or UserId) attribute
+    local id = getModelID(model)
+    if not id then return false end
+    -- Real players have Archivable = false (cloned models have true)
+    if model.Archivable ~= false then return false end
+    return true
+end
+
+-- Team check using Roblox Team object (from Player or from model attribute "Team")
+local function isTeammateByTeam(model)
+    -- First try to get player object from model
+    local player = getPlayerFromModel(model)
+    if player and LocalPlayer then
+        local localTeam = LocalPlayer.Team
+        local targetTeam = player.Team
+        if localTeam and targetTeam then
+            return localTeam == targetTeam
+        end
+    end
+    -- Fallback: check model's "Team" attribute
+    local modelTeam = model:GetAttribute("Team")
+    if modelTeam and LocalPlayer.Team then
+        return tostring(modelTeam) == tostring(LocalPlayer.Team.Name)
+    end
+    return false
 end
 
 -- Get player name for display
@@ -111,13 +136,14 @@ local function getPlayerNameFromModel(model)
     return model.Name
 end
 
--- Validate that a model is a real enemy character (not viewmodel, has ID, humanoid, HRP, not local)
+-- Validate that a model is a real enemy character (real player, alive, has humanoid, HRP)
 local function isValidCharacterTarget(model)
     if not model or not model.Parent or not model:IsA("Model") then return false end
+    -- Must be a real player model (Archivable == false + has ID)
+    if not isRealPlayerModel(model) then return false end
     local viewmodels = Workspace:FindFirstChild("Viewmodels")
     if viewmodels and model.Parent == viewmodels then return false end
     local id = getModelID(model)
-    if not id then return false end
     if LocalPlayer and id == LocalPlayer.UserId then return false end
     local hum = model:FindFirstChildOfClass("Humanoid")
     local hrp = model:FindFirstChild("HumanoidRootPart")
@@ -185,8 +211,8 @@ local function ProcessCharacter(model, espData)
     local hrp = model:FindFirstChild("HumanoidRootPart")
     if not humanoid or not hrp then Hide() return end
 
-    -- Team check using Reveal attribute
-    if ESP.Drawing.TeamCheck.Enabled and isTeammateByReveal(model) then
+    -- Team check using Roblox Teams
+    if ESP.Drawing.TeamCheck.Enabled and isTeammateByTeam(model) then
         Hide()
         return
     end
@@ -429,11 +455,6 @@ end
 -- ========== REFRESH ALL CHARACTERS ==========
 local function RefreshCharacters()
     CleanAllESPs()
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            task.defer(CreateESP, plr.Character)
-        end
-    end
     for _, model in pairs(Workspace:GetChildren()) do
         if model:IsA("Model") and isValidCharacterTarget(model) then
             task.defer(CreateESP, model)
@@ -463,11 +484,6 @@ local function StartRender()
 
         if _Tick - _lastCharScan > 1 then
             _lastCharScan = _Tick
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character then
-                    task.defer(CreateESP, plr.Character)
-                end
-            end
             for _, model in pairs(Workspace:GetChildren()) do
                 if model:IsA("Model") and isValidCharacterTarget(model) then
                     task.defer(CreateESP, model)
