@@ -13,25 +13,14 @@ local GuiService = cloneref(game:GetService("GuiService"))
 
 local LocalPlayer = cloneref(Players.LocalPlayer)
 
--- ========== CONFIGURATION ==========
 local ESP = {
     Enabled     = false,
     MaxDistance = 1000,
     FontSize    = 11,
     FadeOut = { OnDistance = true },
     Drawing = {
-        Chams = {
-            Enabled              = false,
-            Thermal              = false,
-            FillRGB              = Color3.fromRGB(243, 116, 166),
-            Fill_Transparency    = 50,
-            OutlineRGB           = Color3.fromRGB(243, 116, 166),
-            Outline_Transparency = 50,
-            VisibleCheck         = false,
-        },
         Names = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255) },
         Distances = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255) },
-        Weapons = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255) },
         Boxes = {
             Animate          = false,
             RotationSpeed    = 300,
@@ -45,12 +34,11 @@ local ESP = {
             Full   = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255) },
             Corner = { Enabled = false, RGB = Color3.fromRGB(255, 255, 255), Thickness = 1, Length = 15 },
         },
-        TeamCheck = { Enabled = false }, -- uses Roblox Teams
+        TeamCheck = { Enabled = false },
     },
 }
 
--- ========== LOCAL VARIABLES ==========
-local ActiveESPs = {}          -- key = character model
+local ActiveESPs = {}       
 local MasterConnection = nil
 local ScreenGui = nil
 local ESPCounter = 0
@@ -73,14 +61,12 @@ local math_sin = math.sin
 local math_pi = math.pi
 local string_format = string.format
 
--- ========== UTILITIES ==========
 local function Create(Class, Properties)
     local inst = typeof(Class) == "string" and Instance.new(Class) or Class
     for k, v in pairs(Properties) do inst[k] = v end
     return inst
 end
 
--- Get numeric ID from model attribute (can be "ID" or "UserId")
 local function getModelID(model)
     if not model then return nil end
     local id = model:GetAttribute("ID")
@@ -90,7 +76,6 @@ local function getModelID(model)
     return nil
 end
 
--- Get player object from model using ID
 local function getPlayerFromModel(model)
     local id = getModelID(model)
     if id then
@@ -99,20 +84,15 @@ local function getPlayerFromModel(model)
     return nil
 end
 
--- NEW: Real player detection – Archivable == false AND has ID attribute
 local function isRealPlayerModel(model)
     if not model then return false end
-    -- Must have an ID (or UserId) attribute
     local id = getModelID(model)
     if not id then return false end
-    -- Real players have Archivable = false (cloned models have true)
     if model.Archivable ~= false then return false end
     return true
 end
 
--- Team check using Roblox Team object (from Player or from model attribute "Team")
 local function isTeammateByTeam(model)
-    -- First try to get player object from model
     local player = getPlayerFromModel(model)
     if player and LocalPlayer then
         local localTeam = LocalPlayer.Team
@@ -121,7 +101,6 @@ local function isTeammateByTeam(model)
             return localTeam == targetTeam
         end
     end
-    -- Fallback: check model's "Team" attribute
     local modelTeam = model:GetAttribute("Team")
     if modelTeam and LocalPlayer.Team then
         return tostring(modelTeam) == tostring(LocalPlayer.Team.Name)
@@ -129,17 +108,14 @@ local function isTeammateByTeam(model)
     return false
 end
 
--- Get player name for display
 local function getPlayerNameFromModel(model)
     local plr = getPlayerFromModel(model)
     if plr then return plr.Name end
     return model.Name
 end
 
--- Validate that a model is a real enemy character (real player, alive, has humanoid, HRP)
 local function isValidCharacterTarget(model)
     if not model or not model.Parent or not model:IsA("Model") then return false end
-    -- Must be a real player model (Archivable == false + has ID)
     if not isRealPlayerModel(model) then return false end
     local viewmodels = Workspace:FindFirstChild("Viewmodels")
     if viewmodels and model.Parent == viewmodels then return false end
@@ -152,18 +128,6 @@ local function isValidCharacterTarget(model)
     return true
 end
 
--- Find weapon in character (model with item_type attribute)
-local function findWeaponInCharacter(character)
-    if not character then return nil end
-    for _, child in pairs(character:GetChildren()) do
-        if child:IsA("Model") and child:GetAttribute("item_type") then
-            return child
-        end
-    end
-    return nil
-end
-
--- Projected bounds for box (based on torso and head, or fallback)
 local function getProjectedBounds(character, hrp, humanoid)
     local center, onCenter = _Camera:WorldToViewportPoint(hrp.Position)
     if not onCenter or center.Z <= 0 then return nil end
@@ -183,15 +147,12 @@ local function getProjectedBounds(character, hrp, humanoid)
     return cx - w * 0.5, y0, cx + w * 0.5, y1
 end
 
--- ========== PROCESS ESP FOR A CHARACTER ==========
 local function ProcessCharacter(model, espData)
     local el = espData.elements
 
     local function Hide()
         el.Box.Visible = false
         el.Name.Visible = false
-        el.Weapon.Visible = false
-        el.Chams.Enabled = false
         el.LTH.Visible = false; el.LTV.Visible = false
         el.RTH.Visible = false; el.RTV.Visible = false
         el.LBH.Visible = false; el.LBV.Visible = false
@@ -211,7 +172,6 @@ local function ProcessCharacter(model, espData)
     local hrp = model:FindFirstChild("HumanoidRootPart")
     if not humanoid or not hrp then Hide() return end
 
-    -- Team check using Roblox Teams
     if ESP.Drawing.TeamCheck.Enabled and isTeammateByTeam(model) then
         Hide()
         return
@@ -231,9 +191,7 @@ local function ProcessCharacter(model, espData)
     if ESP.FadeOut.OnDistance then
         local fade = math_max(0.1, 1 - Dist / ESP.MaxDistance)
         local inv = 1 - fade
-        el.Outline.Transparency = inv
         el.Name.TextTransparency = inv
-        el.Weapon.TextTransparency = inv
         el.LTH.BackgroundTransparency = inv; el.LTV.BackgroundTransparency = inv
         el.RTH.BackgroundTransparency = inv; el.RTV.BackgroundTransparency = inv
         el.LBH.BackgroundTransparency = inv; el.LBV.BackgroundTransparency = inv
@@ -260,23 +218,6 @@ local function ProcessCharacter(model, espData)
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math_min(cLen, w * 0.2, h * 0.2)
 
-    -- Chams
-    local chams = el.Chams
-    chams.Adornee = model
-    chams.Enabled = ESP.Drawing.Chams.Enabled
-    chams.FillColor = ESP.Drawing.Chams.FillRGB
-    chams.OutlineColor = ESP.Drawing.Chams.OutlineRGB
-    chams.DepthMode = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
-    if ESP.Drawing.Chams.Enabled and ESP.Drawing.Chams.Thermal then
-        local b = math_atan(math_sin(_Tick * 2)) * 2 / math_pi
-        chams.FillTransparency = (ESP.Drawing.Chams.Fill_Transparency / 100) * (1 - b * 0.1)
-        chams.OutlineTransparency = (ESP.Drawing.Chams.Outline_Transparency / 100)
-    else
-        chams.FillTransparency = ESP.Drawing.Chams.Fill_Transparency / 100
-        chams.OutlineTransparency = ESP.Drawing.Chams.Outline_Transparency / 100
-    end
-
-    -- Corner boxes
     local cv = ESP.Drawing.Boxes.Corner.Enabled
     local cc = ESP.Drawing.Boxes.Corner.RGB
     local y0yi = y0 - yi
@@ -290,7 +231,6 @@ local function ProcessCharacter(model, espData)
     el.RBH.Visible = cv; el.RBH.Position = UDim2_new(0, x1 - dynCL, 0, y1yi - cThick); el.RBH.Size = UDim2_new(0, dynCL, 0, cThick); el.RBH.BackgroundColor3 = cc
     el.RBV.Visible = cv; el.RBV.Position = UDim2_new(0, x1 - cThick, 0, y1yi - dynCL); el.RBV.Size = UDim2_new(0, cThick, 0, dynCL); el.RBV.BackgroundColor3 = cc
 
-    -- Main box
     local full = ESP.Drawing.Boxes.Full.Enabled
     local filled = ESP.Drawing.Boxes.Filled.Enabled
     el.Box.Position = UDim2_new(0, x0, 0, y0 - yi)
@@ -310,7 +250,6 @@ local function ProcessCharacter(model, espData)
     end
     espData.lastTick = _Tick
 
-    -- Name
     el.Name.Visible = ESP.Drawing.Names.Enabled
     if ESP.Drawing.Names.Enabled then
         local nameText = getPlayerNameFromModel(model)
@@ -321,22 +260,8 @@ local function ProcessCharacter(model, espData)
         el.Name.TextColor3 = ESP.Drawing.Names.RGB
         el.Name.Position = UDim2_new(0, Pos.X, 0, y0 - 9 - yi)
     end
-
-    -- Weapon
-    el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
-    if ESP.Drawing.Weapons.Enabled then
-        local weapon = findWeaponInCharacter(model)
-        if weapon then
-            el.Weapon.Text = weapon.Name
-            el.Weapon.TextColor3 = ESP.Drawing.Weapons.RGB
-            el.Weapon.Position = UDim2_new(0, Pos.X, 0, y1 + 9 - yi)
-        else
-            el.Weapon.Visible = false
-        end
-    end
 end
 
--- ========== CREATE UI ELEMENTS FOR A CHARACTER ==========
 local function CreateESP(character)
     if not character or not isValidCharacterTarget(character) then return end
     if ActiveESPs[character] then return end
@@ -362,20 +287,6 @@ local function CreateESP(character)
     local Name = Create("TextLabel", {
         Parent = folder, Name = "N",
         Position = UDim2_new(0.5, 0, 0, -11),
-        Size = UDim2_new(0, 100, 0, 20),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        Font = Enum.Font.Code,
-        TextSize = ESP.FontSize,
-        TextStrokeTransparency = 0,
-        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-        RichText = true,
-    })
-
-    local Weapon = Create("TextLabel", {
-        Parent = folder, Name = "W",
-        Position = UDim2_new(0.5, 0, 0, 0),
         Size = UDim2_new(0, 100, 0, 20),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
@@ -420,22 +331,13 @@ local function CreateESP(character)
         }),
     })
 
-    local Chams = Create("Highlight", {
-        Parent = folder, Name = "C",
-        FillTransparency = 1,
-        OutlineTransparency = 0,
-        OutlineColor = Color3.fromRGB(119, 120, 255),
-        DepthMode = "AlwaysOnTop",
-    })
-
     ActiveESPs[character] = {
         folder = folder,
         rotAngle = -45,
         lastTick = tick(),
         elements = {
-            Name = Name, Weapon = Weapon, Box = Box,
+            Name = Name, Box = Box,
             Gradient1 = Gradient1, Gradient2 = Gradient2, Outline = Outline,
-            Chams = Chams,
             LTH = mc("LTH", cLen, cThick), LTV = mc("LTV", cThick, cLen),
             RTH = mc("RTH", cLen, cThick), RTV = mc("RTV", cThick, cLen),
             LBH = mc("LBH", cLen, cThick), LBV = mc("LBV", cThick, cLen),
@@ -444,7 +346,6 @@ local function CreateESP(character)
     }
 end
 
--- ========== CLEANUP ==========
 local function CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
@@ -452,7 +353,6 @@ local function CleanAllESPs()
     table.clear(ActiveESPs)
 end
 
--- ========== REFRESH ALL CHARACTERS ==========
 local function RefreshCharacters()
     CleanAllESPs()
     for _, model in pairs(Workspace:GetChildren()) do
@@ -462,7 +362,6 @@ local function RefreshCharacters()
     end
 end
 
--- ========== RENDER LOOP ==========
 local function StartRender()
     if MasterConnection then MasterConnection:Disconnect() end
     MasterConnection = RunService.RenderStepped:Connect(function()
@@ -497,7 +396,6 @@ local function StartRender()
     end)
 end
 
--- ========== GUI SETUP ==========
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui = gethui and gethui() or CoreGui
 
@@ -525,13 +423,11 @@ pcall(function()
     elseif protect_gui then protect_gui(ScreenGui) end
 end)
 
--- ========== EXPOSED API ==========
 ESP.Refresh = RefreshCharacters
 ESP.CleanAll = CleanAllESPs
 ESP.SetCornerColor = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length = l end end
 
--- ========== START ==========
 StartRender()
 return ESP
