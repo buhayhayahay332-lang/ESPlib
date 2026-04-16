@@ -444,17 +444,30 @@ local function StartMasterLoop()
 end
 
 
-for _, v in pairs(CoreGui:GetChildren()) do
-    if v.Name:sub(1, 4) == "ESP_" then v:Destroy() end
-end
-
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui   = (gethui and gethui()) or CoreGui
+
+local function cleanupESPGuids(container)
+    if not container then return end
+    for _, v in pairs(container:GetChildren()) do
+        if v:IsA("ScreenGui") and v.Name:sub(1, 4) == "ESP_" then
+            v:Destroy()
+        end
+    end
+end
+
+cleanupESPGuids(CoreGui)
+if parentGui ~= CoreGui then
+    cleanupESPGuids(parentGui)
+end
 
 local ScreenGui = Functions:Create("ScreenGui", {
     Parent        = parentGui,
     Name          = guiHideName,
     ResetOnSpawn  = false,
+    IgnoreGuiInset = true,
+    DisplayOrder   = 999999,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 })
 
 pcall(function()
