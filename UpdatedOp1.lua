@@ -301,7 +301,11 @@ local function ProcessESP(model, espData)
         el.RBH.BackgroundTransparency = inv  el.RBV.BackgroundTransparency = inv
     end
 
-     local cf, size = model:GetBoundingBox()
+      local cf, size = model:GetBoundingBox()
+    if not cf or not size then
+        Hide()
+        return
+    end
     
     local topWorld = cf.Position + Vector3.new(0, size.Y / 2, 0)
     local bottomWorld = cf.Position - Vector3.new(0, size.Y / 2, 0)
@@ -314,14 +318,23 @@ local function ProcessESP(model, espData)
         return
     end
     
+    if not topPos or not bottomPos then
+        Hide()
+        return
+    end
+    
     local h = math.abs(topPos.Y - bottomPos.Y)
     local w = h / 2
     
+    if h <= 0 or w <= 0 then
+        Hide()
+        return
+    end
+    
     local x0 = topPos.X - w / 2
-    local y0 = topPos.Y
+    local y0 = math.min(topPos.Y, bottomPos.Y)
     local x1 = topPos.X + w / 2
-    local y1 = bottomPos.Y
-
+    local y1 = math.max(topPos.Y, bottomPos.Y)
     
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
