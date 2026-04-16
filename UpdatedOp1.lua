@@ -460,9 +460,9 @@ end
 
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
-local parentGui   = CoreGui
-if not parentGui and gethui then
-    parentGui = gethui()
+local parentGui   = gethui and gethui() 
+if not parentGui and CoreGui then
+    parentGui = CoreGui
 end
 
 local function cleanupESPGuids(container)
@@ -475,7 +475,7 @@ local function cleanupESPGuids(container)
 end
 
 cleanupESPGuids(CoreGui)
-if parentGui ~= CoreGui then
+if parentGui ~= gethui then
     cleanupESPGuids(parentGui)
 end
 
