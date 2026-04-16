@@ -1,4 +1,4 @@
-pcall(function() setthreadidentity(8) end)
+ pcall(function() setthreadidentity(8) end)
 pcall(function() game:GetService("WebViewService"):Destroy() end)
 
 local cloneref = cloneref or function(o) return o end
@@ -88,8 +88,8 @@ local BONE_CONNECTIONS = {
 
 
 local ESPCounter      = 0
-local ActiveESPs      = {} 
-local ActiveSkeletons = {} 
+local ActiveESPs      = {}  
+local ActiveSkeletons = {}  
 local TeamHighlightCache = {} 
 local MasterConnection = nil
 
@@ -301,16 +301,54 @@ local function ProcessESP(model, espData)
         el.RBH.BackgroundTransparency = inv  el.RBV.BackgroundTransparency = inv
     end
 
-    -- ── Scale ─────────────────────────────────────────────────────────────
-    local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
-    local w  = 2.5  * scaleFactor
-    local h  = 4.75 * scaleFactor
-    local vOff = h * 0.175
+    local w, h
+    local x0, y0, x1, y1
+
+    local okBB, bbCf, bbSize = pcall(function()
+        return model:GetBoundingBox()
+    end)
+
+    if okBB and bbCf and bbSize then
+        local hx, hy, hz = bbSize.X * 0.5, bbSize.Y * 0.5, bbSize.Z * 0.5
+        local minX, minY = math.huge, math.huge
+        local maxX, maxY = -math.huge, -math.huge
+        local anyPoint = false
+
+        for _, dx in ipairs({ -1, 1 }) do
+            for _, dy in ipairs({ -1, 1 }) do
+                for _, dz in ipairs({ -1, 1 }) do
+                    local worldPos = (bbCf * CFrame.new(dx * hx, dy * hy, dz * hz)).Position
+                    local p, onScreenCorner = _Camera:WorldToViewportPoint(worldPos)
+                    if onScreenCorner and p.Z > 0 then
+                        anyPoint = true
+                        if p.X < minX then minX = p.X end
+                        if p.Y < minY then minY = p.Y end
+                        if p.X > maxX then maxX = p.X end
+                        if p.Y > maxY then maxY = p.Y end
+                    end
+                end
+            end
+        end
+
+        if anyPoint then
+            x0, y0 = minX, minY
+            x1, y1 = maxX, maxY
+            w = math.max(2, x1 - x0)
+            h = math.max(2, y1 - y0)
+        end
+    end
+
+    if not w or not h then
+        local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
+        w = 2.5  * scaleFactor
+        h = 4.75 * scaleFactor
+        x0, y0 = Pos.X - w * 0.5, Pos.Y - h * 0.5
+        x1, y1 = Pos.X + w * 0.5, Pos.Y + h * 0.5
+    end
+
     local cLen  = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL = math.min(cLen, w * 0.2, h * 0.2)
-    local x0, y0 = Pos.X - w * 0.5, Pos.Y - h * 0.5 + vOff
-    local x1, y1 = Pos.X + w * 0.5, Pos.Y + h * 0.5 + vOff
 
     local chams = el.Chams
     chams.Adornee      = model
@@ -385,7 +423,6 @@ local function ProcessESP(model, espData)
 end
 
 
-
 local function StartMasterLoop()
     if MasterConnection then
         MasterConnection:Disconnect()
@@ -405,7 +442,6 @@ local function StartMasterLoop()
         end
     end)
 end
-
 
 
 for _, v in pairs(CoreGui:GetChildren()) do
@@ -428,7 +464,6 @@ pcall(function()
         protect_gui(ScreenGui)
     end
 end)
-
 
 
 local function CreateESP(CharacterModel)
@@ -602,7 +637,6 @@ local function MonitorViewmodels()
 end
 
 
-
 ESP.ToggleSkeleton = function(enabled)
     ESP.Drawing.Skeleton.Enabled = enabled
     if not enabled then
@@ -642,6 +676,7 @@ end
 ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length    = l end end
+
 
 MonitorViewmodels()
 StartMasterLoop()
