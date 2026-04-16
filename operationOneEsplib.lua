@@ -382,9 +382,12 @@ local function ProcessESP(model, espData)
     if not ESP.Enabled then Hide() return end
 
     if not model or not model.Parent or not isValidCharacterTarget(model) then
-    removeESP(model)
-    return
-end
+        task.defer(function()
+            if espData.folder then espData.folder:Destroy() end
+            ActiveESPs[model] = nil
+        end)
+        return
+    end
 
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     local hrp      = model:FindFirstChild("HumanoidRootPart")
@@ -584,28 +587,6 @@ pcall(function()
 end)
 
 
-local function removeESP(model)
-    local espData = ActiveESPs[model]
-    if not espData then return end
-
-    if espData._ancestryConn then
-        espData._ancestryConn:Disconnect()
-        espData._ancestryConn = nil
-    end
-
-    if espData.folder then
-        espData.folder:Destroy()
-        espData.folder = nil
-    end
-
-    ActiveESPs[model] = nil
-
-    removeSkeleton(model)
-
-    TeamHighlightCache[model] = nil
-end
-
-
 function CreateESP(CharacterModel)
     if not CharacterModel then return end
     if not isValidCharacterTarget(CharacterModel) then return end
@@ -698,52 +679,38 @@ function CreateESP(CharacterModel)
         DepthMode           = "AlwaysOnTop",
     })
 
-
-local espEntry = {
-    folder   = folder,
-    rotAngle = -45,
-    lastTick = tick(),
-    _ancestryConn = nil,  
-    elements = {
-        Name      = Name,
-        Weapon    = Weapon,
-        Box       = Box,
-        Gradient1 = Gradient1,
-        Gradient2 = Gradient2,
-        Outline   = Outline,
-        Chams     = Chams,
-        LTH = mc("LTH", cLen,   cThick),
-        LTV = mc("LTV", cThick, cLen),
-        RTH = mc("RTH", cLen,   cThick),
-        RTV = mc("RTV", cThick, cLen),
-        LBH = mc("LBH", cLen,   cThick),
-        LBV = mc("LBV", cThick, cLen),
-        RBH = mc("RBH", cLen,   cThick),
-        RBV = mc("RBV", cThick, cLen),
-    },
-}
-
-ActiveESPs[CharacterModel] = espEntry
-
-espEntry._ancestryConn = CharacterModel.AncestryChanged:Connect(function(_, newParent)
-    if newParent == nil then
-        removeESP(CharacterModel)
-    end
-end)
+    ActiveESPs[CharacterModel] = {
+        folder   = folder,
+        rotAngle = -45,
+        lastTick = tick(),
+        elements = {
+            Name      = Name,
+            Weapon    = Weapon,
+            Box       = Box,
+            Gradient1 = Gradient1,
+            Gradient2 = Gradient2,
+            Outline   = Outline,
+            Chams     = Chams,
+            LTH = mc("LTH", cLen,   cThick),
+            LTV = mc("LTV", cThick, cLen),
+            RTH = mc("RTH", cLen,   cThick),
+            RTV = mc("RTV", cThick, cLen),
+            LBH = mc("LBH", cLen,   cThick),
+            LBV = mc("LBV", cThick, cLen),
+            RBH = mc("RBH", cLen,   cThick),
+            RBV = mc("RBV", cThick, cLen),
+        },
+    }
 end
 
 
 function Functions:CleanAllESPs()
-    local models = {}
-    for model in pairs(ActiveESPs) do
-        models[#models + 1] = model
-    end
-    for _, model in ipairs(models) do
-        removeESP(model)
+    for model, espData in pairs(ActiveESPs) do
+        if espData.folder then espData.folder:Destroy() end
+        ActiveESPs[model] = nil
     end
     self:CleanAllSkeletons()
 end
-
 
 ESP.RefreshESPs = function()
     Functions:CleanAllESPs()
