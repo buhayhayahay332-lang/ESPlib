@@ -107,31 +107,35 @@ function Functions:Create(Class, Properties)
     return inst
 end
 
--- ========== NEW: Helper functions for real player names ==========
+-- ========== REAL PLAYER NAME LOOKUP (robust, fallbacks) ==========
 local function getPlayerFromViewModel(model)
+    -- 1. Try ID attribute
     local id = model:GetAttribute("ID") or model:GetAttribute("UserId")
     if id then
-        return Players:GetPlayerByUserId(id)
+        local player = Players:GetPlayerByUserId(id)
+        if player then return player end
+    end
+    -- 2. Try viewmodel name (case‑sensitive)
+    local player = Players:FindFirstChild(model.Name)
+    if player then return player end
+    -- 3. Try numeric ID inside name (e.g., "Player123")
+    local numericId = tonumber(model.Name:match("%d+"))
+    if numericId then
+        return Players:GetPlayerByUserId(numericId)
     end
     return nil
 end
 
 local function getPlayerNameFromViewModel(model)
     local player = getPlayerFromViewModel(model)
-    if player then
-        return player.Name
-    end
+    if player then return player.Name end
     return model.Name  -- fallback to viewmodel name
 end
 -- ================================================================
 
 local function hasTeamHighlight(model)
-    if not model then
-        return false
-    end
-    if TeamHighlightCache[model] ~= nil then
-        return TeamHighlightCache[model]
-    end
+    if not model then return false end
+    if TeamHighlightCache[model] ~= nil then return TeamHighlightCache[model] end
     for _, child in pairs(Workspace:GetChildren()) do
         if child:IsA("Highlight") and child.Adornee == model then
             TeamHighlightCache[model] = true
@@ -143,14 +147,10 @@ local function hasTeamHighlight(model)
 end
 
 Workspace.ChildAdded:Connect(function(child)
-    if child:IsA("Highlight") then
-        table.clear(TeamHighlightCache)
-    end
+    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
 end)
 Workspace.ChildRemoved:Connect(function(child)
-    if child:IsA("Highlight") then
-        table.clear(TeamHighlightCache)
-    end
+    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
 end)
 
 local function isValidPlayer(model)
@@ -175,7 +175,6 @@ end
 
 local function getProjectedModelBounds(model)
     if not model then return nil end
-
     local minX, minY = math.huge, math.huge
     local maxX, maxY = -math.huge, -math.huge
     local any = false
@@ -194,9 +193,7 @@ local function getProjectedModelBounds(model)
     }
 
     local widthSet = {}
-    for _, p in ipairs(widthParts) do
-        if p then widthSet[p] = true end
-    end
+    for _, p in ipairs(widthParts) do if p then widthSet[p] = true end end
 
     for _, d in ipairs(heightParts) do
         if d and d:IsA("BasePart") and d.Transparency < 1 then
@@ -211,7 +208,6 @@ local function getProjectedModelBounds(model)
                 d.CFrame * Vector3.new( half.X,  half.Y, -half.Z),
                 d.CFrame * Vector3.new( half.X,  half.Y,  half.Z),
             }
-
             for _, worldPos in ipairs(corners) do
                 local p, on = _Camera:WorldToViewportPoint(worldPos)
                 if on and p.Z > 0 then
@@ -453,12 +449,12 @@ local function ProcessESP(model, espData)
     end
     espData.lastTick = _Tick
 
-    -- ========== MODIFIED NAME LOGIC (real player names + team filter) ==========
+    -- ========== NAME DISPLAY (REAL PLAYER NAME, FALLBACK TO VIEWMODEL NAME) ==========
     el.Name.Visible = ESP.Drawing.Names.Enabled
     if ESP.Drawing.Names.Enabled then
         local player = getPlayerFromViewModel(model)
         local showName = true
-        -- Team filter for name only (using Roblox Team)
+        -- Optional team check for name only (uses Roblox Team)
         if ESP.Drawing.TeamCheck.Enabled and player and player.Team == LocalPlayer.Team then
             showName = false
         end
@@ -474,7 +470,7 @@ local function ProcessESP(model, espData)
             el.Name.Visible = false
         end
     end
-    -- =========================================================================
+    -- ==============================================================================
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
     if ESP.Drawing.Weapons.Enabled then
