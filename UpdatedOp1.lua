@@ -449,7 +449,7 @@ local function ProcessESP(model, espData)
         end
         el.Name.Text       = string.format('(<font color="rgb(255,255,255)">T</font>) %s', nameText)
         el.Name.TextColor3 = ESP.Drawing.Names.RGB
-        el.Name.Position = UDim2.new(0, boxCenterX, 0, y0 - ESP.FontSize - 2 - yi)
+       el.Name.Position   = UDim2.new(0, boxCenterX, 0, y0 - ESP.FontSize - 2 - yInset)
     end
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
@@ -458,7 +458,7 @@ local function ProcessESP(model, espData)
         if wm then
             el.Weapon.Text       = wm.Name
             el.Weapon.TextColor3 = ESP.Drawing.Weapons.RGB
-            el.Weapon.Position = UDim2.new(0, boxCenterX, 0, y1 + 2 - yi)
+           el.Weapon.Position = UDim2.new(0, boxCenterX, 0, y1 + 2 - yInset)
         else
             el.Weapon.Visible = false
         end
@@ -555,8 +555,8 @@ local function CreateESP(CharacterModel)
     local Name = Functions:Create("TextLabel", {
         Parent               = folder,  Name = "N",
         Position             = UDim2.new(0.5, 0, 0, -11),
-        Size                 = UDim2.new(0, 100, 0, 20),
-        AnchorPoint          = Vector2.new(0.5, 0.5),
+        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint          = Vector2.new(0.5, 1),
         BackgroundTransparency = 1,
         TextColor3           = Color3.fromRGB(255, 255, 255),
         Font                 = Enum.Font.Code,
@@ -570,8 +570,8 @@ local function CreateESP(CharacterModel)
     local Weapon = Functions:Create("TextLabel", {
         Parent               = folder,  Name = "W",
         Position             = UDim2.new(0.5, 0, 0, 0),
-        Size                 = UDim2.new(0, 100, 0, 20),
-        AnchorPoint          = Vector2.new(0.5, 0.5),
+        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint          = Vector2.new(0.5, 0),
         BackgroundTransparency = 1,
         TextColor3           = Color3.fromRGB(255, 255, 255),
         Font                 = Enum.Font.Code,
