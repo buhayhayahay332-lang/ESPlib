@@ -87,8 +87,8 @@ local BONE_CONNECTIONS = {
 }
 
 local ESPCounter      = 0
-local ActiveESPs      = {}   -- viewmodel -> elements (boxes, chams, weapon)
-local ActiveSkeletons = {}   -- viewmodel -> skeleton lines
+local ActiveESPs      = {}  
+local ActiveSkeletons = {}  
 local TeamHighlightCache = {}
 local MasterConnection = nil
 
@@ -99,8 +99,7 @@ local _Tick     = nil
 local _GuiInsetY = 0
 local ScreenGui = nil
 
--- ========== NEW: Character-based name ESP ==========
-local ActiveNames = {}  -- character model -> TextLabel
+local ActiveNames = {}  
 
 local function getRealPlayerFromCharacter(character)
     local id = character:GetAttribute("UserId") or character:GetAttribute("ID")
@@ -146,7 +145,6 @@ local function updateNameLabel(character, label)
         return
     end
 
-    -- Team check for names (uses player.Team)
     if ESP.Drawing.TeamCheck.Enabled and player.Team == LocalPlayer.Team then
         label.Visible = false
         return
@@ -186,7 +184,6 @@ local function removeNameLabel(character)
     end
 end
 
--- ========== Existing viewmodel-based functions (unchanged) ==========
 local Functions = {}
 
 function Functions:Create(Class, Properties)
@@ -211,11 +208,14 @@ end
 Workspace.ChildAdded:Connect(function(child)
     if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
 end)
+
 Workspace.ChildRemoved:Connect(function(child)
-    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
+    if ActiveNames[child] then
+        removeNameLabel(child)
+    end
 end)
 
-local function isValidPlayer(model)  -- viewmodel validation
+local function isValidPlayer(model)  
     if not model or not model.Parent then return false end
     if model.Name == "LocalViewmodel" then return false end
     local viewmodels = Workspace:FindFirstChild("Viewmodels")
@@ -382,7 +382,7 @@ local function ProcessSkeleton(character, skData)
     end
 end
 
-local function ProcessESP(model, espData)  -- viewmodel-based (boxes, chams, weapon)
+local function ProcessESP(model, espData) 
     local el = espData.elements
     local function Hide()
         el.Box.Visible = false
@@ -491,7 +491,6 @@ local function ProcessESP(model, espData)  -- viewmodel-based (boxes, chams, wea
     end
     espData.lastTick = _Tick
 
-    -- Name part REMOVED – now handled by character-based system below
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
     if ESP.Drawing.Weapons.Enabled then
@@ -510,7 +509,6 @@ local function ProcessESP(model, espData)  -- viewmodel-based (boxes, chams, wea
     end
 end
 
--- ========== RENDER LOOP (combines viewmodel ESP + character name ESP) ==========
 local function st()
     if MasterConnection then
         MasterConnection:Disconnect()
@@ -532,7 +530,6 @@ local function st()
             _GuiInsetY = 0
         end
 
-        -- Process viewmodel ESP (boxes, chams, skeleton, weapons)
         for model, espData in pairs(ActiveESPs) do
             ProcessESP(model, espData)
         end
@@ -540,7 +537,6 @@ local function st()
             ProcessSkeleton(model, skData)
         end
 
-        -- Process character-based name ESP
         if ESP.Enabled and ESP.Drawing.Names.Enabled then
             for _, character in pairs(Workspace:GetChildren()) do
                 if isRealCharacter(character) then
@@ -555,7 +551,6 @@ local function st()
                 end
             end
         else
-            -- Hide all name labels if ESP disabled or names disabled
             for character, label in pairs(ActiveNames) do
                 label.Visible = false
             end
@@ -563,7 +558,6 @@ local function st()
     end)
 end
 
--- ========== GUI SETUP ==========
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui = gethui and gethui() or CoreGui
 
@@ -593,7 +587,6 @@ pcall(function()
     elseif protect_gui then protect_gui(ScreenGui) end
 end)
 
--- ========== VIEWMODEL ESP CREATION (unchanged) ==========
 local function CreateESP(CharacterModel)
     if not CharacterModel then return end
     if not isValidPlayer(CharacterModel) then return end
