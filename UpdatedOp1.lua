@@ -135,9 +135,9 @@ local function createNameLabel(character)
     label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     label.RichText = true
     label.Visible = false
-    label.Size = UDim2.new(0, 200, 0, ESP.FontSize + 4)
-    label.AnchorPoint = Vector2.new(0.5, 1)
-    label.TextScaled = false
+    label.Size = UDim2.new(0, 200, 0, ESP.FontSize + 4) 
+    label.AnchorPoint = Vector2.new(0.5, 1)              
+    label.TextScaled = false                              
     ActiveNames[character] = label
 end
 
@@ -174,7 +174,7 @@ local function updateNameLabel(character, label)
     label.Text = nameText
     label.TextColor3 = ESP.Drawing.Names.RGB
     label.TextSize = ESP.FontSize
-    label.Size = UDim2.new(0, 100, 0, 20)
+    label.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 15)
     label.Visible = ESP.Drawing.Names.Enabled
 end
 
@@ -600,31 +600,31 @@ local function CreateESP(CharacterModel)
     local Name = Functions:Create("TextLabel", {
         Parent = folder, Name = "N",
         Position = UDim2.new(0.5, 0, 0, -11),
-        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
-        AnchorPoint = Vector2.new(0.5, 1),
         BackgroundTransparency = 1,
         TextColor3 = Color3.fromRGB(255, 255, 255),
         Font = Enum.Font.Code,
         TextSize = ESP.FontSize,
         TextStrokeTransparency = 0,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint = Vector2.new(0.5, 1),             
+        TextScaled = false,                               
         RichText = true,
-        TextScaled = false,
     })
 
     local Weapon = Functions:Create("TextLabel", {
         Parent = folder, Name = "W",
         Position = UDim2.new(0.5, 0, 0, 0),
-        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
-        AnchorPoint = Vector2.new(0.5, 0),
         BackgroundTransparency = 1,
         TextColor3 = Color3.fromRGB(255, 255, 255),
         Font = Enum.Font.Code,
         TextSize = ESP.FontSize,
         TextStrokeTransparency = 0,
         TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint = Vector2.new(0.5, 0),             
+        TextScaled = false,          
         RichText = true,
-        TextScaled = false,
     })
 
     local Box = Functions:Create("Frame", {
