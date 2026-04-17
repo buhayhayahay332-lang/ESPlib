@@ -1,4 +1,4 @@
-pcall(function() setthreadidentity(8) end)
+ pcall(function() setthreadidentity(8) end)
 pcall(function() game:GetService("WebViewService"):Destroy() end)
 
 local cloneref = cloneref or function(o) return o end
@@ -9,7 +9,7 @@ local Players    = cloneref(game:GetService("Players"))
 local CoreGui    = cloneref(game:GetService("CoreGui"))
 local GuiService = cloneref(game:GetService("GuiService"))
 
-local LocalPlayer = Players.LocalPlayer
+
 
 local ESP = {
     Enabled     = false,
@@ -86,6 +86,7 @@ local BONE_CONNECTIONS = {
     { "hip1", "leg1" },       { "hip2", "leg2" },
 }
 
+
 local ESPCounter      = 0
 local ActiveESPs      = {}  
 local ActiveSkeletons = {}  
@@ -99,6 +100,7 @@ local _Tick     = nil
 local _GuiInsetY = 0
 local ScreenGui = nil
 
+
 local Functions = {}
 
 function Functions:Create(Class, Properties)
@@ -107,35 +109,13 @@ function Functions:Create(Class, Properties)
     return inst
 end
 
--- ========== REAL PLAYER NAME LOOKUP (robust, fallbacks) ==========
-local function getPlayerFromViewModel(model)
-    -- 1. Try ID attribute
-    local id = model:GetAttribute("ID") or model:GetAttribute("UserId")
-    if id then
-        local player = Players:GetPlayerByUserId(id)
-        if player then return player end
-    end
-    -- 2. Try viewmodel name (case‑sensitive)
-    local player = Players:FindFirstChild(model.Name)
-    if player then return player end
-    -- 3. Try numeric ID inside name (e.g., "Player123")
-    local numericId = tonumber(model.Name:match("%d+"))
-    if numericId then
-        return Players:GetPlayerByUserId(numericId)
-    end
-    return nil
-end
-
-local function getPlayerNameFromViewModel(model)
-    local player = getPlayerFromViewModel(model)
-    if player then return player.Name end
-    return model.Name  -- fallback to viewmodel name
-end
--- ================================================================
-
 local function hasTeamHighlight(model)
-    if not model then return false end
-    if TeamHighlightCache[model] ~= nil then return TeamHighlightCache[model] end
+    if not model then
+        return false
+    end
+    if TeamHighlightCache[model] ~= nil then
+        return TeamHighlightCache[model]
+    end
     for _, child in pairs(Workspace:GetChildren()) do
         if child:IsA("Highlight") and child.Adornee == model then
             TeamHighlightCache[model] = true
@@ -147,10 +127,14 @@ local function hasTeamHighlight(model)
 end
 
 Workspace.ChildAdded:Connect(function(child)
-    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
+    if child:IsA("Highlight") then
+        table.clear(TeamHighlightCache)
+    end
 end)
 Workspace.ChildRemoved:Connect(function(child)
-    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
+    if child:IsA("Highlight") then
+        table.clear(TeamHighlightCache)
+    end
 end)
 
 local function isValidPlayer(model)
@@ -175,6 +159,7 @@ end
 
 local function getProjectedModelBounds(model)
     if not model then return nil end
+
     local minX, minY = math.huge, math.huge
     local maxX, maxY = -math.huge, -math.huge
     local any = false
@@ -193,7 +178,9 @@ local function getProjectedModelBounds(model)
     }
 
     local widthSet = {}
-    for _, p in ipairs(widthParts) do if p then widthSet[p] = true end end
+    for _, p in ipairs(widthParts) do
+        if p then widthSet[p] = true end
+    end
 
     for _, d in ipairs(heightParts) do
         if d and d:IsA("BasePart") and d.Transparency < 1 then
@@ -208,6 +195,7 @@ local function getProjectedModelBounds(model)
                 d.CFrame * Vector3.new( half.X,  half.Y, -half.Z),
                 d.CFrame * Vector3.new( half.X,  half.Y,  half.Z),
             }
+
             for _, worldPos in ipairs(corners) do
                 local p, on = _Camera:WorldToViewportPoint(worldPos)
                 if on and p.Z > 0 then
@@ -237,6 +225,7 @@ local function getProjectedModelBounds(model)
     if not any then return nil end
     return minX, minY, maxX, maxY
 end
+
 
 local function createSkeletonESP(character)
     if not character or ActiveSkeletons[character] then return end
@@ -279,6 +268,7 @@ function Functions:CleanAllSkeletons()
         removeSkeleton(model)
     end
 end
+
 
 local function ProcessSkeleton(character, skData)
     local lines = skData.lines
@@ -329,6 +319,7 @@ local function ProcessSkeleton(character, skData)
         end
     end
 end
+
 
 local function ProcessESP(model, espData)
     local el = espData.elements
@@ -449,28 +440,16 @@ local function ProcessESP(model, espData)
     end
     espData.lastTick = _Tick
 
-    -- ========== NAME DISPLAY (REAL PLAYER NAME, FALLBACK TO VIEWMODEL NAME) ==========
     el.Name.Visible = ESP.Drawing.Names.Enabled
     if ESP.Drawing.Names.Enabled then
-        local player = getPlayerFromViewModel(model)
-        local showName = true
-        -- Optional team check for name only (uses Roblox Team)
-        if ESP.Drawing.TeamCheck.Enabled and player and player.Team == LocalPlayer.Team then
-            showName = false
+        local nameText = model.Name
+        if ESP.Drawing.Distances.Enabled then
+            nameText = string.format("%s [%d]", nameText, math.floor(Dist))
         end
-        if showName then
-            local nameText = getPlayerNameFromViewModel(model)
-            if ESP.Drawing.Distances.Enabled then
-                nameText = string.format("%s [%d]", nameText, math.floor(Dist))
-            end
-            el.Name.Text       = string.format('(<font color="rgb(255,255,255)">T</font>) %s', nameText)
-            el.Name.TextColor3 = ESP.Drawing.Names.RGB
-            el.Name.Position   = UDim2.new(0, Pos.X, 0, y0 - 9 - yInset)
-        else
-            el.Name.Visible = false
-        end
+        el.Name.Text       = string.format('(<font color="rgb(255,255,255)">T</font>) %s', nameText)
+        el.Name.TextColor3 = ESP.Drawing.Names.RGB
+        el.Name.Position   = UDim2.new(0, Pos.X, 0, y0 - 9 - yInset)
     end
-    -- ==============================================================================
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
     if ESP.Drawing.Weapons.Enabled then
@@ -488,6 +467,7 @@ local function ProcessESP(model, espData)
         createSkeletonESP(model)
     end
 end
+
 
 local function st()
     if MasterConnection then
@@ -520,6 +500,7 @@ local function st()
         end
     end)
 end
+
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
 local parentGui   = gethui and gethui() 
@@ -557,6 +538,7 @@ pcall(function()
         protect_gui(ScreenGui)
     end
 end)
+
 
 local function CreateESP(CharacterModel)
     if not CharacterModel then return end
@@ -677,6 +659,7 @@ local function CreateESP(CharacterModel)
     }
 end
 
+
 function Functions:CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
@@ -697,6 +680,7 @@ ESP.RefreshESPs = function()
 end
 
 ESP.CleanAllESPs = function() Functions:CleanAllESPs() end
+
 
 local function mvm()
     local viewmodels = Workspace:FindFirstChild("Viewmodels")
@@ -725,6 +709,7 @@ local function mvm()
         TeamHighlightCache[v] = nil
     end)
 end
+
 
 ESP.ToggleSkeleton = function(enabled)
     ESP.Drawing.Skeleton.Enabled = enabled
@@ -766,6 +751,8 @@ ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.B
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length    = l end end
 
+
 mvm()
 st()
+
 return ESP
