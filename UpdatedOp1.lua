@@ -111,7 +111,7 @@ end
 
 local function isRealCharacter(model)
     if not model or not model:IsA("Model") then return false end
-    if model.Archivable ~= false then return false end          -- real player only
+    if model.Archivable ~= false then return false end         
     if model.Name == "LocalViewmodel" then return false end
     local id = model:GetAttribute("UserId") or model:GetAttribute("ID")
     if typeof(id) ~= "number" then return false end
@@ -141,32 +141,43 @@ local function createNameLabel(character)
     ActiveNames[character] = label
 end
 
+local function getRealCharBounds(character)
+    local parts = {
+        character:FindFirstChild("Head"),
+        character:FindFirstChild("HumanoidRootPart"),
+        character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"),
+        character:FindFirstChild("LeftUpperLeg") or character:FindFirstChild("Left Leg"),
+        character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("Right Leg"),
+    }
+    local minY = math.huge
+    local centerX = nil
+    for _, p in ipairs(parts) do
+        if p and p:IsA("BasePart") then
+            local sp, on = _Camera:WorldToViewportPoint(p.Position)
+            if on and sp.Z > 0 then
+                if sp.Y < minY then minY = sp.Y end
+                if not centerX then centerX = sp.X end
+            end
+        end
+    end
+    if minY == math.huge then return nil, nil end
+    return centerX, minY
+end
+
 local function updateNameLabel(character, label)
     local player = getRealPlayerFromCharacter(character)
-    if not player then
-        label.Visible = false
-        return
-    end
-
+    if not player then label.Visible = false return end
     if ESP.Drawing.TeamCheck.Enabled and player.Team == LocalPlayer.Team then
-        label.Visible = false
-        return
+        label.Visible = false return
     end
-
-    local head = character:FindFirstChild("head")
-    local posPart = head or character:FindFirstChild("HumanoidRootPart")
-    if not posPart then
-        label.Visible = false
-        return
-    end
-
-    local screenPos, onScreen = _Camera:WorldToViewportPoint(posPart.Position + Vector3.new(0, 2.5, 0))
-    local dist = (_CamPos - posPart.Position).Magnitude
-    if not onScreen or dist > ESP.MaxDistance then
-        label.Visible = false
-        return
-    end
-
+    local torso = character:FindFirstChild("HumanoidRootPart")
+    if not torso then label.Visible = false return end
+    local Pos, OnScreen = _Camera:WorldToViewportPoint(torso.Position)
+    local dist = (_CamPos - torso.Position).Magnitude
+    if not OnScreen or dist > ESP.MaxDistance then label.Visible = false return end
+    local centerX, topY = getRealCharBounds(character)
+    topY = topY and (topY - _GuiInsetY - 2) or (Pos.Y - 50)
+    centerX = centerX or Pos.X
     local nameText = player.Name
     if ESP.Drawing.Distances.Enabled then
         nameText = string.format("%s [%d]", nameText, math.floor(dist))
@@ -174,9 +185,11 @@ local function updateNameLabel(character, label)
     label.Text = nameText
     label.TextColor3 = ESP.Drawing.Names.RGB
     label.TextSize = ESP.FontSize
-    label.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 15)
-    label.Visible = ESP.Drawing.Names.Enabled
+    label.Position = UDim2.new(0, centerX, 0, topY)
+    label.Visible = true
 end
+
+
 
 local function removeNameLabel(character)
     local label = ActiveNames[character]
