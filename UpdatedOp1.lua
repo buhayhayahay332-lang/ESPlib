@@ -242,7 +242,7 @@ local function updateNameLabel(character, label)
         local x0, y0, x1 = getProjectedModelBounds(matchedVM)
         if x0 then
             centerX = x0 + (x1 - x0) * 0.5
-            topY    = y0 - _GuiInsetY - 5
+            topY    = y0 - _GuiInsetY - 20
         end
     end
     centerX = centerX or Pos.X
