@@ -242,7 +242,7 @@ local function updateNameLabel(character, label)
         local x0, y0, x1 = getProjectedModelBounds(matchedVM)
         if x0 then
             centerX = x0 + (x1 - x0) * 0.5
-            topY    = y0 - _GuiInsetY - 2
+            topY    = y0 - _GuiInsetY - 5
         end
     end
     centerX = centerX or Pos.X
@@ -280,8 +280,14 @@ local function hasTeamHighlight(model)
     if TeamHighlightCache[model] ~= nil then return TeamHighlightCache[model] end
     for _, child in pairs(Workspace:GetChildren()) do
         if child:IsA("Highlight") and child.Adornee == model then
-            TeamHighlightCache[model] = true
-            return true
+            local c = child.FillColor
+            local r = math.round(c.R * 255)
+            local g = math.round(c.G * 255)
+            local b = math.round(c.B * 255)
+            if r == 0 and g == 150 and b == 0 then
+                TeamHighlightCache[model] = true
+                return true
+            end
         end
     end
     TeamHighlightCache[model] = false
