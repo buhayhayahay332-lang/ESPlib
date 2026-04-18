@@ -483,7 +483,7 @@ local function ProcessESP(model, espData)
     h = math.max(2, y1 - y0)
     local cLen   = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
-    local dynCL  = math.min(cLen, w * 0.2, h * 0.2)
+    local dynCL = cLen
     local yInset = _GuiInsetY or 0
 
     local chams = el.Chams
