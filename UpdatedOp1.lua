@@ -242,7 +242,7 @@ local function updateNameLabel(character, label)
         local x0, y0, x1 = getProjectedModelBounds(matchedVM)
         if x0 then
             centerX = x0 + (x1 - x0) * 0.5
-            topY    = y0 - _GuiInsetY - 20
+            topY    = y0 - _GuiInsetY - 15
         end
     end
     centerX = centerX or Pos.X
@@ -456,7 +456,7 @@ local function ProcessESP(model, espData)
     end
     local w = math.max(2, x1 - x0)
     local h = math.max(2, y1 - y0)
-    local padX = math.max(2, w * 0.10)
+    local padX = math.max(2, w * 0.15)
     local padY = math.max(2, h * 0.07)
     x0 = x0 - padX; x1 = x1 + padX
     y0 = y0 - padY; y1 = y1 + padY
