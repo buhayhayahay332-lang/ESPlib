@@ -86,20 +86,20 @@ local BONE_CONNECTIONS = {
     { "hip1", "leg1" },       { "hip2", "leg2" },
 }
 
-local ESPCounter      = 0
-local ActiveESPs      = {}  
-local ActiveSkeletons = {}  
+local ESPCounter         = 0
+local ActiveESPs         = {}
+local ActiveSkeletons    = {}
 local TeamHighlightCache = {}
-local MasterConnection = nil
+local MasterConnection   = nil
 
-local _Camera   = nil
-local _CamPos   = nil
-local _ViewSize = nil
-local _Tick     = nil
+local _Camera    = nil
+local _CamPos    = nil
+local _ViewSize  = nil
+local _Tick      = nil
 local _GuiInsetY = 0
-local ScreenGui = nil
+local ScreenGui  = nil
 
-local ActiveNames = {}  
+local ActiveNames = {}
 
 local function getRealPlayerFromCharacter(character)
     local id = character:GetAttribute("UserId") or character:GetAttribute("ID")
@@ -111,12 +111,12 @@ end
 
 local function isRealCharacter(model)
     if not model or not model:IsA("Model") then return false end
-    if model.Archivable ~= false then return false end         
+    if model.Archivable ~= false then return false end
     if model.Name == "LocalViewmodel" then return false end
     local id = model:GetAttribute("UserId") or model:GetAttribute("ID")
     if typeof(id) ~= "number" then return false end
     if id == LocalPlayer.UserId then return false end
-    local hum = model:FindFirstChildOfClass("Humanoid")
+    local hum  = model:FindFirstChildOfClass("Humanoid")
     local root = model:FindFirstChild("HumanoidRootPart")
     if not hum or hum.Health <= 0 then return false end
     if not root then return false end
@@ -126,133 +126,43 @@ end
 local function createNameLabel(character)
     if ActiveNames[character] then return end
     local label = Instance.new("TextLabel")
-    label.Parent = ScreenGui
+    label.Parent               = ScreenGui
     label.BackgroundTransparency = 1
-    label.TextColor3 = ESP.Drawing.Names.RGB
-    label.Font = Enum.Font.Code
-    label.TextSize = ESP.FontSize
+    label.TextColor3           = ESP.Drawing.Names.RGB
+    label.Font                 = Enum.Font.Code
+    label.TextSize             = ESP.FontSize
     label.TextStrokeTransparency = 0
-    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    label.RichText = true
-    label.Visible = false
-    label.Size = UDim2.new(0, 200, 0, ESP.FontSize + 4) 
-    label.AnchorPoint = Vector2.new(0.5, 1)              
-    label.TextScaled = false                              
-    ActiveNames[character] = label
+    label.TextStrokeColor3     = Color3.fromRGB(0, 0, 0)
+    label.RichText             = true
+    label.Visible              = false
+    label.Size                 = UDim2.new(0, 200, 0, ESP.FontSize + 4)
+    label.AnchorPoint          = Vector2.new(0.5, 1)
+    label.TextScaled           = false
+    ActiveNames[character]     = label
 end
 
-local function getRealCharBounds(character)
-    local parts = {
-        character:FindFirstChild("Head"),
-        character:FindFirstChild("HumanoidRootPart"),
-        character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"),
-        character:FindFirstChild("LeftUpperLeg") or character:FindFirstChild("Left Leg"),
-        character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("Right Leg"),
-    }
-    local minY = math.huge
-    local centerX = nil
-    for _, p in ipairs(parts) do
-        if p and p:IsA("BasePart") then
-            local sp, on = _Camera:WorldToViewportPoint(p.Position)
-            if on and sp.Z > 0 then
-                if sp.Y < minY then minY = sp.Y end
-                if not centerX then centerX = sp.X end
+local function getMatchingViewmodel(character)
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local viewmodels = Workspace:FindFirstChild("Viewmodels")
+    if not viewmodels then return nil end
+    local closest, closestDist = nil, math.huge
+    for _, vm in pairs(viewmodels:GetChildren()) do
+        local vmTorso = vm:FindFirstChild("torso")
+        if vmTorso then
+            local d = (vmTorso.Position - root.Position).Magnitude
+            if d < closestDist then
+                closestDist = d
+                closest = vm
             end
         end
     end
-    if minY == math.huge then return nil, nil end
-    return centerX, minY
-end
-
-local function updateNameLabel(character, label)
-    local player = getRealPlayerFromCharacter(character)
-    if not player then label.Visible = false return end
-    if ESP.Drawing.TeamCheck.Enabled and player.Team == LocalPlayer.Team then
-        label.Visible = false return
-    end
-    local torso = character:FindFirstChild("HumanoidRootPart")
-    if not torso then label.Visible = false return end
-    local Pos, OnScreen = _Camera:WorldToViewportPoint(torso.Position)
-    local dist = (_CamPos - torso.Position).Magnitude
-    if not OnScreen or dist > ESP.MaxDistance then label.Visible = false return end
-    local centerX, topY = getRealCharBounds(character)
-    topY = topY and (topY - _GuiInsetY - 2) or (Pos.Y - 50)
-    centerX = centerX or Pos.X
-    local nameText = player.Name
-    if ESP.Drawing.Distances.Enabled then
-        nameText = string.format("%s [%d]", nameText, math.floor(dist))
-    end
-    label.Text = nameText
-    label.TextColor3 = ESP.Drawing.Names.RGB
-    label.TextSize = ESP.FontSize
-    label.Position = UDim2.new(0, centerX, 0, topY)
-    label.Visible = true
-end
-
-
-
-local function removeNameLabel(character)
-    local label = ActiveNames[character]
-    if label then
-        label:Destroy()
-        ActiveNames[character] = nil
-    end
-end
-
-local Functions = {}
-
-function Functions:Create(Class, Properties)
-    local inst = typeof(Class) == "string" and Instance.new(Class) or Class
-    for k, v in pairs(Properties) do inst[k] = v end
-    return inst
-end
-
-local function hasTeamHighlight(model)
-    if not model then return false end
-    if TeamHighlightCache[model] ~= nil then return TeamHighlightCache[model] end
-    for _, child in pairs(Workspace:GetChildren()) do
-        if child:IsA("Highlight") and child.Adornee == model then
-            TeamHighlightCache[model] = true
-            return true
-        end
-    end
-    TeamHighlightCache[model] = false
-    return false
-end
-
-Workspace.ChildAdded:Connect(function(child)
-    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
-end)
-
-Workspace.ChildRemoved:Connect(function(child)
-    if ActiveNames[child] then
-        removeNameLabel(child)
-    end
-end)
-
-local function isValidPlayer(model)  
-    if not model or not model.Parent then return false end
-    if model.Name == "LocalViewmodel" then return false end
-    local viewmodels = Workspace:FindFirstChild("Viewmodels")
-    if not viewmodels or model.Parent ~= viewmodels then return false end
-    local torso = model:FindFirstChild("torso")
-    if not torso or not torso:IsA("BasePart") then return false end
-    return true
-end
-
-local function findWeaponInCharacter(character)
-    if not character then return nil end
-    for _, child in pairs(character:GetChildren()) do
-        if child:IsA("Model") and child:GetAttribute("item_type") then
-            return child
-        end
-    end
-    return nil
+    return closest
 end
 
 local function getProjectedModelBounds(model)
     if not model then return nil end
-    local minX, minY = math.huge, math.huge
+    local minX, minY = math.huge,  math.huge
     local maxX, maxY = -math.huge, -math.huge
     local any = false
 
@@ -314,6 +224,98 @@ local function getProjectedModelBounds(model)
     return minX, minY, maxX, maxY
 end
 
+local function updateNameLabel(character, label)
+    local player = getRealPlayerFromCharacter(character)
+    if not player then label.Visible = false return end
+    if ESP.Drawing.TeamCheck.Enabled and player.Team == LocalPlayer.Team then
+        label.Visible = false return
+    end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then label.Visible = false return end
+    local Pos, OnScreen = _Camera:WorldToViewportPoint(root.Position)
+    local dist = (_CamPos - root.Position).Magnitude
+    if not OnScreen or dist > ESP.MaxDistance then label.Visible = false return end
+
+    local centerX, topY
+    local matchedVM = getMatchingViewmodel(character)
+    if matchedVM then
+        local x0, y0, x1 = getProjectedModelBounds(matchedVM)
+        if x0 then
+            centerX = x0 + (x1 - x0) * 0.5
+            topY    = y0 - _GuiInsetY - 2
+        end
+    end
+    centerX = centerX or Pos.X
+    topY    = topY    or (Pos.Y - 50)
+
+    local nameText = player.Name
+    if ESP.Drawing.Distances.Enabled then
+        nameText = string.format("%s [%d]", nameText, math.floor(dist))
+    end
+    label.Text       = nameText
+    label.TextColor3 = ESP.Drawing.Names.RGB
+    label.TextSize   = ESP.FontSize
+    label.Position   = UDim2.new(0, centerX, 0, topY)
+    label.Visible    = true
+end
+
+local function removeNameLabel(character)
+    local label = ActiveNames[character]
+    if label then
+        label:Destroy()
+        ActiveNames[character] = nil
+    end
+end
+
+local Functions = {}
+
+function Functions:Create(Class, Properties)
+    local inst = typeof(Class) == "string" and Instance.new(Class) or Class
+    for k, v in pairs(Properties) do inst[k] = v end
+    return inst
+end
+
+local function hasTeamHighlight(model)
+    if not model then return false end
+    if TeamHighlightCache[model] ~= nil then return TeamHighlightCache[model] end
+    for _, child in pairs(Workspace:GetChildren()) do
+        if child:IsA("Highlight") and child.Adornee == model then
+            TeamHighlightCache[model] = true
+            return true
+        end
+    end
+    TeamHighlightCache[model] = false
+    return false
+end
+
+Workspace.ChildAdded:Connect(function(child)
+    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
+end)
+
+Workspace.ChildRemoved:Connect(function(child)
+    if ActiveNames[child] then removeNameLabel(child) end
+end)
+
+local function isValidPlayer(model)
+    if not model or not model.Parent then return false end
+    if model.Name == "LocalViewmodel" then return false end
+    local viewmodels = Workspace:FindFirstChild("Viewmodels")
+    if not viewmodels or model.Parent ~= viewmodels then return false end
+    local torso = model:FindFirstChild("torso")
+    if not torso or not torso:IsA("BasePart") then return false end
+    return true
+end
+
+local function findWeaponInCharacter(character)
+    if not character then return nil end
+    for _, child in pairs(character:GetChildren()) do
+        if child:IsA("Model") and child:GetAttribute("item_type") then
+            return child
+        end
+    end
+    return nil
+end
+
 local function createSkeletonESP(character)
     if not character or ActiveSkeletons[character] then return end
     if not isValidPlayer(character) then return end
@@ -328,9 +330,9 @@ local function createSkeletonESP(character)
     local lines = {}
     for _ in ipairs(BONE_CONNECTIONS) do
         local line = Drawing.new("Line")
-        line.Visible = false
-        line.Color = ESP.Drawing.Skeleton.RGB
-        line.Thickness = ESP.Drawing.Skeleton.Thickness
+        line.Visible      = false
+        line.Color        = ESP.Drawing.Skeleton.RGB
+        line.Thickness    = ESP.Drawing.Skeleton.Thickness
         line.Transparency = 1
         table.insert(lines, line)
     end
@@ -358,18 +360,14 @@ local function ProcessSkeleton(character, skData)
     local function hideLines()
         for _, l in ipairs(lines) do l.Visible = false end
     end
-    if not ESP.Enabled or not ESP.Drawing.Skeleton.Enabled then
-        hideLines() return
-    end
+    if not ESP.Enabled or not ESP.Drawing.Skeleton.Enabled then hideLines() return end
     if not character or not character.Parent then
         hideLines()
         for _, l in ipairs(lines) do l:Remove() end
         ActiveSkeletons[character] = nil
         return
     end
-    if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(character) then
-        hideLines() return
-    end
+    if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(character) then hideLines() return end
     local torso = skData.bones["torso"]
     if not torso or torso.Transparency >= 1 then hideLines() return end
     local dist = (_CamPos - torso.Position).Magnitude
@@ -378,16 +376,16 @@ local function ProcessSkeleton(character, skData)
     local skThick = ESP.Drawing.Skeleton.Thickness
     for i, conn in ipairs(BONE_CONNECTIONS) do
         local b1, b2 = skData.bones[conn[1]], skData.bones[conn[2]]
-        local line = lines[i]
+        local line   = lines[i]
         if b1 and b2 and line then
             local p1, on1 = _Camera:WorldToViewportPoint(b1.Position)
             local p2, on2 = _Camera:WorldToViewportPoint(b2.Position)
             if on1 and on2 then
-                line.From = Vector2.new(p1.X, p1.Y)
-                line.To = Vector2.new(p2.X, p2.Y)
-                line.Color = skColor
+                line.From      = Vector2.new(p1.X, p1.Y)
+                line.To        = Vector2.new(p2.X, p2.Y)
+                line.Color     = skColor
                 line.Thickness = skThick
-                line.Visible = true
+                line.Visible   = true
             else
                 line.Visible = false
             end
@@ -397,12 +395,13 @@ local function ProcessSkeleton(character, skData)
     end
 end
 
-local function ProcessESP(model, espData) 
+local function ProcessESP(model, espData)
     local el = espData.elements
+
     local function Hide()
-        el.Box.Visible = false
+        el.Box.Visible    = false
         el.Weapon.Visible = false
-        el.Chams.Enabled = false
+        el.Chams.Enabled  = false
         el.LTH.Visible = false; el.LTV.Visible = false
         el.RTH.Visible = false; el.RTV.Visible = false
         el.LBH.Visible = false; el.LBV.Visible = false
@@ -432,8 +431,8 @@ local function ProcessESP(model, espData)
 
     if ESP.FadeOut.OnDistance then
         local fade = math.max(0.1, 1 - (Dist / ESP.MaxDistance))
-        local inv = 1 - fade
-        el.Outline.Transparency = inv
+        local inv  = 1 - fade
+        el.Outline.Transparency    = inv
         el.Weapon.TextTransparency = inv
         el.LTH.BackgroundTransparency = inv; el.LTV.BackgroundTransparency = inv
         el.RTH.BackgroundTransparency = inv; el.RTV.BackgroundTransparency = inv
@@ -444,7 +443,7 @@ local function ProcessESP(model, espData)
     local x0, y0, x1, y1 = getProjectedModelBounds(model)
     if not x0 then
         local scaleFactor = (torso.Size.Y * _ViewSize.Y) / (Pos.Z * 2)
-        local fw = 2.5 * scaleFactor
+        local fw = 2.5  * scaleFactor
         local fh = 4.75 * scaleFactor
         x0, y0 = Pos.X - fw * 0.5, Pos.Y - fh * 0.5
         x1, y1 = Pos.X + fw * 0.5, Pos.Y + fh * 0.5
@@ -457,43 +456,43 @@ local function ProcessESP(model, espData)
     y0 = y0 - padY; y1 = y1 + padY
     w = math.max(2, x1 - x0)
     h = math.max(2, y1 - y0)
-    local cLen = ESP.Drawing.Boxes.Corner.Length
+    local cLen   = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
-    local dynCL = math.min(cLen, w * 0.2, h * 0.2)
+    local dynCL  = math.min(cLen, w * 0.2, h * 0.2)
     local yInset = _GuiInsetY or 0
 
     local chams = el.Chams
-    chams.Adornee = model
-    chams.Enabled = ESP.Drawing.Chams.Enabled
-    chams.FillColor = ESP.Drawing.Chams.FillRGB
+    chams.Adornee      = model
+    chams.Enabled      = ESP.Drawing.Chams.Enabled
+    chams.FillColor    = ESP.Drawing.Chams.FillRGB
     chams.OutlineColor = ESP.Drawing.Chams.OutlineRGB
-    chams.DepthMode = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
+    chams.DepthMode    = ESP.Drawing.Chams.VisibleCheck and "Occluded" or "AlwaysOnTop"
     if ESP.Drawing.Chams.Thermal then
         local b = math.atan(math.sin(_Tick * 2)) * 2 / math.pi
-        chams.FillTransparency = (ESP.Drawing.Chams.Fill_Transparency / 100) * (1 - b * 0.1)
+        chams.FillTransparency    = (ESP.Drawing.Chams.Fill_Transparency    / 100) * (1 - b * 0.1)
         chams.OutlineTransparency = (ESP.Drawing.Chams.Outline_Transparency / 100)
     end
 
-    local cv = ESP.Drawing.Boxes.Corner.Enabled
-    local cc = ESP.Drawing.Boxes.Corner.RGB
+    local cv   = ESP.Drawing.Boxes.Corner.Enabled
+    local cc   = ESP.Drawing.Boxes.Corner.RGB
     local y0yi = y0 - yInset
     local y1yi = y1 - yInset
-    el.LTH.Visible = cv; el.LTH.Position = UDim2.new(0, x0, 0, y0yi); el.LTH.Size = UDim2.new(0, dynCL, 0, cThick); el.LTH.BackgroundColor3 = cc
-    el.LTV.Visible = cv; el.LTV.Position = UDim2.new(0, x0, 0, y0yi); el.LTV.Size = UDim2.new(0, cThick, 0, dynCL); el.LTV.BackgroundColor3 = cc
-    el.RTH.Visible = cv; el.RTH.Position = UDim2.new(0, x1 - dynCL, 0, y0yi); el.RTH.Size = UDim2.new(0, dynCL, 0, cThick); el.RTH.BackgroundColor3 = cc
-    el.RTV.Visible = cv; el.RTV.Position = UDim2.new(0, x1 - cThick, 0, y0yi); el.RTV.Size = UDim2.new(0, cThick, 0, dynCL); el.RTV.BackgroundColor3 = cc
-    el.LBH.Visible = cv; el.LBH.Position = UDim2.new(0, x0, 0, y1yi - cThick); el.LBH.Size = UDim2.new(0, dynCL, 0, cThick); el.LBH.BackgroundColor3 = cc
-    el.LBV.Visible = cv; el.LBV.Position = UDim2.new(0, x0, 0, y1yi - dynCL); el.LBV.Size = UDim2.new(0, cThick, 0, dynCL); el.LBV.BackgroundColor3 = cc
-    el.RBH.Visible = cv; el.RBH.Position = UDim2.new(0, x1 - dynCL, 0, y1yi - cThick); el.RBH.Size = UDim2.new(0, dynCL, 0, cThick); el.RBH.BackgroundColor3 = cc
-    el.RBV.Visible = cv; el.RBV.Position = UDim2.new(0, x1 - cThick, 0, y1yi - dynCL); el.RBV.Size = UDim2.new(0, cThick, 0, dynCL); el.RBV.BackgroundColor3 = cc
+    el.LTH.Visible = cv; el.LTH.Position = UDim2.new(0, x0,           0, y0yi);          el.LTH.Size = UDim2.new(0, dynCL,  0, cThick); el.LTH.BackgroundColor3 = cc
+    el.LTV.Visible = cv; el.LTV.Position = UDim2.new(0, x0,           0, y0yi);          el.LTV.Size = UDim2.new(0, cThick, 0, dynCL);  el.LTV.BackgroundColor3 = cc
+    el.RTH.Visible = cv; el.RTH.Position = UDim2.new(0, x1 - dynCL,  0, y0yi);          el.RTH.Size = UDim2.new(0, dynCL,  0, cThick); el.RTH.BackgroundColor3 = cc
+    el.RTV.Visible = cv; el.RTV.Position = UDim2.new(0, x1 - cThick, 0, y0yi);          el.RTV.Size = UDim2.new(0, cThick, 0, dynCL);  el.RTV.BackgroundColor3 = cc
+    el.LBH.Visible = cv; el.LBH.Position = UDim2.new(0, x0,           0, y1yi - cThick); el.LBH.Size = UDim2.new(0, dynCL,  0, cThick); el.LBH.BackgroundColor3 = cc
+    el.LBV.Visible = cv; el.LBV.Position = UDim2.new(0, x0,           0, y1yi - dynCL);  el.LBV.Size = UDim2.new(0, cThick, 0, dynCL);  el.LBV.BackgroundColor3 = cc
+    el.RBH.Visible = cv; el.RBH.Position = UDim2.new(0, x1 - dynCL,  0, y1yi - cThick); el.RBH.Size = UDim2.new(0, dynCL,  0, cThick); el.RBH.BackgroundColor3 = cc
+    el.RBV.Visible = cv; el.RBV.Position = UDim2.new(0, x1 - cThick, 0, y1yi - dynCL);  el.RBV.Size = UDim2.new(0, cThick, 0, dynCL);  el.RBV.BackgroundColor3 = cc
 
-    local full = ESP.Drawing.Boxes.Full.Enabled
+    local full   = ESP.Drawing.Boxes.Full.Enabled
     local filled = ESP.Drawing.Boxes.Filled.Enabled
-    el.Box.Position = UDim2.new(0, x0, 0, y0 - yInset)
-    el.Box.Size = UDim2.new(0, w, 0, h)
-    el.Box.Visible = full or (cv and filled)
+    el.Box.Position           = UDim2.new(0, x0, 0, y0 - yInset)
+    el.Box.Size               = UDim2.new(0, w,  0, h)
+    el.Box.Visible            = full or (cv and filled)
     el.Box.BackgroundTransparency = filled and ESP.Drawing.Boxes.Filled.Transparency or 1
-    el.Outline.Enabled = full and ESP.Drawing.Boxes.Gradient
+    el.Outline.Enabled        = full and ESP.Drawing.Boxes.Gradient
 
     if ESP.Drawing.Boxes.Animate then
         local dt = _Tick - espData.lastTick
@@ -506,14 +505,13 @@ local function ProcessESP(model, espData)
     end
     espData.lastTick = _Tick
 
-
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
     if ESP.Drawing.Weapons.Enabled then
         local wm = findWeaponInCharacter(model)
         if wm then
-            el.Weapon.Text = wm.Name
+            el.Weapon.Text       = wm.Name
             el.Weapon.TextColor3 = ESP.Drawing.Weapons.RGB
-            el.Weapon.Position = UDim2.new(0, Pos.X, 0, y1 + 9 - yInset)
+            el.Weapon.Position   = UDim2.new(0, x0 + w * 0.5, 0, y1yi + 2)
         else
             el.Weapon.Visible = false
         end
@@ -530,10 +528,10 @@ local function st()
         MasterConnection = nil
     end
     MasterConnection = RunService.RenderStepped:Connect(function()
-        _Camera = Workspace.CurrentCamera
-        _CamPos = _Camera.CFrame.Position
+        _Camera   = Workspace.CurrentCamera
+        _CamPos   = _Camera.CFrame.Position
         _ViewSize = _Camera.ViewportSize
-        _Tick = tick()
+        _Tick     = tick()
         local okInset, inset = pcall(function() return GuiService:GetGuiInset() end)
         if okInset and inset then
             if ScreenGui and ScreenGui.IgnoreGuiInset then
@@ -574,7 +572,7 @@ local function st()
 end
 
 local guiHideName = "ESP_" .. tostring(math.random(100000000, 999999999))
-local parentGui = gethui and gethui() or CoreGui
+local parentGui   = gethui and gethui() or CoreGui
 
 local function cleanupESPGuids(container)
     if not container then return end
@@ -589,11 +587,11 @@ cleanupESPGuids(CoreGui)
 if parentGui ~= gethui then cleanupESPGuids(parentGui) end
 
 ScreenGui = Functions:Create("ScreenGui", {
-    Parent = parentGui,
-    Name = guiHideName,
-    ResetOnSpawn = false,
+    Parent         = parentGui,
+    Name           = guiHideName,
+    ResetOnSpawn   = false,
     IgnoreGuiInset = true,
-    DisplayOrder = 999999,
+    DisplayOrder   = 999999,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 })
 
@@ -611,110 +609,111 @@ local function CreateESP(CharacterModel)
     local folder = Functions:Create("Folder", { Parent = ScreenGui, Name = "E_" .. ESPCounter })
 
     local Name = Functions:Create("TextLabel", {
-        Parent = folder, Name = "N",
-        Position = UDim2.new(0.5, 0, 0, -11),
+        Parent               = folder, Name = "N",
+        Position             = UDim2.new(0.5, 0, 0, 0),
+        Size                 = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint          = Vector2.new(0.5, 1),
         BackgroundTransparency = 1,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        Font = Enum.Font.Code,
-        TextSize = ESP.FontSize,
+        TextColor3           = Color3.fromRGB(255, 255, 255),
+        Font                 = Enum.Font.Code,
+        TextSize             = ESP.FontSize,
         TextStrokeTransparency = 0,
-        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
-        AnchorPoint = Vector2.new(0.5, 1),             
-        TextScaled = false,                               
-        RichText = true,
+        TextStrokeColor3     = Color3.fromRGB(0, 0, 0),
+        RichText             = true,
+        TextScaled           = false,
+        Visible              = false,
     })
 
     local Weapon = Functions:Create("TextLabel", {
-        Parent = folder, Name = "W",
-        Position = UDim2.new(0.5, 0, 0, 0),
+        Parent               = folder, Name = "W",
+        Position             = UDim2.new(0.5, 0, 0, 0),
+        Size                 = UDim2.new(0, 200, 0, ESP.FontSize + 4),
+        AnchorPoint          = Vector2.new(0.5, 0),
         BackgroundTransparency = 1,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        Font = Enum.Font.Code,
-        TextSize = ESP.FontSize,
+        TextColor3           = Color3.fromRGB(255, 255, 255),
+        Font                 = Enum.Font.Code,
+        TextSize             = ESP.FontSize,
         TextStrokeTransparency = 0,
-        TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-        Size = UDim2.new(0, 200, 0, ESP.FontSize + 4),
-        AnchorPoint = Vector2.new(0.5, 0),             
-        TextScaled = false,          
-        RichText = true,
+        TextStrokeColor3     = Color3.fromRGB(0, 0, 0),
+        RichText             = true,
+        TextScaled           = false,
     })
 
     local Box = Functions:Create("Frame", {
-        Parent = folder, Name = "B",
-        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        Parent               = folder, Name = "B",
+        BackgroundColor3     = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.75,
-        BorderSizePixel = 0,
+        BorderSizePixel      = 0,
     })
 
     local Gradient1 = Functions:Create("UIGradient", {
-        Parent = Box,
+        Parent  = Box,
         Enabled = ESP.Drawing.Boxes.GradientFill,
-        Color = ColorSequence.new({
+        Color   = ColorSequence.new({
             ColorSequenceKeypoint.new(0, ESP.Drawing.Boxes.GradientFillRGB1),
             ColorSequenceKeypoint.new(1, ESP.Drawing.Boxes.GradientFillRGB2),
         }),
     })
 
     local Outline = Functions:Create("UIStroke", {
-        Parent = Box,
-        Enabled = ESP.Drawing.Boxes.Gradient,
+        Parent       = Box,
+        Enabled      = ESP.Drawing.Boxes.Gradient,
         Transparency = 0,
-        Color = Color3.fromRGB(255, 255, 255),
+        Color        = Color3.fromRGB(255, 255, 255),
         LineJoinMode = Enum.LineJoinMode.Miter,
     })
 
     local Gradient2 = Functions:Create("UIGradient", {
-        Parent = Outline,
+        Parent  = Outline,
         Enabled = ESP.Drawing.Boxes.Gradient,
-        Color = ColorSequence.new({
+        Color   = ColorSequence.new({
             ColorSequenceKeypoint.new(0, ESP.Drawing.Boxes.GradientRGB1),
             ColorSequenceKeypoint.new(1, ESP.Drawing.Boxes.GradientRGB2),
         }),
     })
 
     local Chams = Functions:Create("Highlight", {
-        Parent = folder, Name = "C",
-        FillTransparency = 1,
+        Parent              = folder, Name = "C",
+        FillTransparency    = 1,
         OutlineTransparency = 0,
-        OutlineColor = Color3.fromRGB(119, 120, 255),
-        DepthMode = "AlwaysOnTop",
+        OutlineColor        = Color3.fromRGB(119, 120, 255),
+        DepthMode           = "AlwaysOnTop",
     })
 
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
-    local cLen = ESP.Drawing.Boxes.Corner.Length
-    local cc = ESP.Drawing.Boxes.Corner.RGB
+    local cLen   = ESP.Drawing.Boxes.Corner.Length
+    local cc     = ESP.Drawing.Boxes.Corner.RGB
 
     local function mc(name, w, h)
         return Functions:Create("Frame", {
-            Parent = folder, Name = name,
-            BackgroundColor3 = cc,
+            Parent               = folder, Name = name,
+            BackgroundColor3     = cc,
             BackgroundTransparency = 0,
-            BorderSizePixel = 0,
-            Position = UDim2.new(0, 0, 0, 0),
-            Size = UDim2.new(0, w, 0, h),
+            BorderSizePixel      = 0,
+            Position             = UDim2.new(0, 0, 0, 0),
+            Size                 = UDim2.new(0, w, 0, h),
         })
     end
 
     ActiveESPs[CharacterModel] = {
-        folder = folder,
+        folder   = folder,
         rotAngle = -45,
         lastTick = tick(),
         elements = {
-            Name = Name,
-            Weapon = Weapon,
-            Box = Box,
+            Name      = Name,
+            Weapon    = Weapon,
+            Box       = Box,
             Gradient1 = Gradient1,
             Gradient2 = Gradient2,
-            Outline = Outline,
-            Chams = Chams,
-            LTH = mc("LTH", cLen, cThick),
+            Outline   = Outline,
+            Chams     = Chams,
+            LTH = mc("LTH", cLen,   cThick),
             LTV = mc("LTV", cThick, cLen),
-            RTH = mc("RTH", cLen, cThick),
+            RTH = mc("RTH", cLen,   cThick),
             RTV = mc("RTV", cThick, cLen),
-            LBH = mc("LBH", cLen, cThick),
+            LBH = mc("LBH", cLen,   cThick),
             LBV = mc("LBV", cThick, cLen),
-            RBH = mc("RBH", cLen, cThick),
+            RBH = mc("RBH", cLen,   cThick),
             RBV = mc("RBV", cThick, cLen),
         },
     }
@@ -802,10 +801,11 @@ ESP.SetSkeletonThickness = function(thickness)
     end
 end
 
-ESP.SetCornerColor = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
+ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.Boxes.Corner.RGB = c end end
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
-ESP.SetCornerLength = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length = l end end
+ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length    = l end end
 
 mvm()
 st()
+
 return ESP
