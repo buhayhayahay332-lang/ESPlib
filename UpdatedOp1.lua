@@ -30,6 +30,9 @@ local ESP = {
             Outline_Transparency = 50,
             VisibleCheck         = false,
         },
+        HealthBar = {
+                Enabled = false,
+                },
         Names = {
             Enabled = false,
             RGB     = Color3.fromRGB(255, 255, 255),
@@ -401,6 +404,21 @@ local function ProcessSkeleton(character, skData)
     end
 end
 
+
+local function getRealCharacterFromViewmodel(model)
+    local vmTorso = model:FindFirstChild("torso")
+    if not vmTorso then return nil end
+    for _, character in pairs(Workspace:GetChildren()) do
+        if isRealCharacter(character) then
+            local root = character:FindFirstChild("HumanoidRootPart")
+            if root and (root.Position - vmTorso.Position).Magnitude < 5 then
+                return character
+            end
+        end
+    end
+    return nil
+end
+
 local function ProcessESP(model, espData)
     local el = espData.elements
 
@@ -408,6 +426,7 @@ local function ProcessESP(model, espData)
         el.Box.Visible    = false
         el.Weapon.Visible = false
         el.Chams.Enabled  = false
+        el.HealthBarBG.Visible = false
         el.LTH.Visible = false; el.LTV.Visible = false
         el.RTH.Visible = false; el.RTV.Visible = false
         el.LBH.Visible = false; el.LBV.Visible = false
@@ -499,6 +518,30 @@ local function ProcessESP(model, espData)
     el.Box.Visible            = full or (cv and filled)
     el.Box.BackgroundTransparency = filled and ESP.Drawing.Boxes.Filled.Transparency or 1
     el.Outline.Enabled        = full and ESP.Drawing.Boxes.Gradient
+
+        el.HealthBarBG.Visible = ESP.Drawing.HealthBar.Enabled
+    if ESP.Drawing.HealthBar.Enabled then
+        local hp, maxHp = 100, 100
+        local realChar = getRealCharacterFromViewmodel(model)
+        if realChar then
+            local hum = realChar:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hp    = hum.Health
+                maxHp = hum.MaxHealth
+            end
+        end
+        local hpPct = math.clamp(hp / math.max(maxHp, 1), 0, 1)
+        local barWidth = 4
+        el.HealthBarBG.Position = UDim2.new(0, x0 - barWidth - 2, 0, y0yi)
+        el.HealthBarBG.Size     = UDim2.new(0, barWidth, 0, h)
+        el.HealthBar.Size       = UDim2.new(1, 0, hpPct, 0)
+        el.HealthBar.Position   = UDim2.new(0, 0, 1 - hpPct, 0)
+        el.HealthBar.BackgroundColor3 = Color3.fromRGB(
+            math.floor(255 * (1 - hpPct)),
+            math.floor(255 * hpPct),
+            0
+        )
+    end
 
     if ESP.Drawing.Boxes.Animate then
         local dt = _Tick - espData.lastTick
@@ -690,6 +733,21 @@ local function CreateESP(CharacterModel)
     local cLen   = ESP.Drawing.Boxes.Corner.Length
     local cc     = ESP.Drawing.Boxes.Corner.RGB
 
+        local HealthBarBG = Functions:Create("Frame", {
+        Parent = folder, Name = "HBG",
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.5,
+        BorderSizePixel = 0,
+    })
+    local HealthBar = Functions:Create("Frame", {
+        Parent = HealthBarBG, Name = "HB",
+        BackgroundColor3 = Color3.fromRGB(0, 255, 0),
+        BackgroundTransparency = 0,
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(1, 0, 1, 0),
+    })
+    
     local function mc(name, w, h)
         return Functions:Create("Frame", {
             Parent               = folder, Name = name,
@@ -713,6 +771,8 @@ local function CreateESP(CharacterModel)
             Gradient2 = Gradient2,
             Outline   = Outline,
             Chams     = Chams,
+            HealthBarBG = HealthBarBG,
+            HealthBar   = HealthBar,
             LTH = mc("LTH", cLen,   cThick),
             LTV = mc("LTV", cThick, cLen),
             RTH = mc("RTH", cLen,   cThick),
