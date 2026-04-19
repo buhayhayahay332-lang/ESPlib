@@ -30,7 +30,7 @@ local ESP = {
             Outline_Transparency = 50,
             VisibleCheck         = false,
         },
-      HealthBar = {
+        HealthBar = {
             Enabled = false,
         },
         Names = {
@@ -46,12 +46,12 @@ local ESP = {
             RGB     = Color3.fromRGB(255, 255, 255),
         },
         Boxes = {
-            Animate       = false,
-            RotationSpeed = 300,
-            Gradient      = true,
-            GradientRGB1  = Color3.fromRGB(255, 255, 255),
-            GradientRGB2  = Color3.fromRGB(0, 0, 0),
-            GradientFill  = true,
+            Animate          = false,
+            RotationSpeed    = 300,
+            Gradient         = true,
+            GradientRGB1     = Color3.fromRGB(255, 255, 255),
+            GradientRGB2     = Color3.fromRGB(0, 0, 0),
+            GradientFill     = true,
             GradientFillRGB1 = Color3.fromRGB(255, 255, 255),
             GradientFillRGB2 = Color3.fromRGB(0, 0, 0),
             Filled = {
@@ -102,7 +102,20 @@ local _Tick      = nil
 local _GuiInsetY = 0
 local ScreenGui  = nil
 
+local _Viewmodels = nil
+
 local ActiveNames = {}
+
+local VMtoChar             = {}
+local CharToVM             = {}
+local _proxyCacheDirty     = true
+local _frameCount          = 0
+local PROXY_REFRESH_INTERVAL = 30
+
+local RealCharacterSet = {}
+
+local _cb = {}
+for i = 1, 8 do _cb[i] = Vector3.new() end
 
 local function getRealPlayerFromCharacter(character)
     local id = character:GetAttribute("UserId") or character:GetAttribute("ID")
@@ -126,6 +139,116 @@ local function isRealCharacter(model)
     return true
 end
 
+local function markProxyCacheDirty()
+    _proxyCacheDirty = true
+end
+
+local function rebuildProxyCache()
+    VMtoChar = {}
+    CharToVM = {}
+    if not _Viewmodels then
+        _proxyCacheDirty = false
+        return
+    end
+
+    local chars = {}
+    for character in pairs(RealCharacterSet) do
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root then
+            chars[#chars + 1] = { model = character, pos = root.Position }
+        end
+    end
+
+    if #chars == 0 then
+        _proxyCacheDirty = false
+        return
+    end
+
+    for _, vm in pairs(_Viewmodels:GetChildren()) do
+        local vmTorso = vm:FindFirstChild("torso")
+        if vmTorso then
+            local bestChar, bestDist = nil, math.huge
+            local vmPos = vmTorso.Position
+            for _, cd in ipairs(chars) do
+                local d = (cd.pos - vmPos).Magnitude
+                if d < bestDist then
+                    bestDist = d
+                    bestChar = cd.model
+                end
+            end
+            if bestChar and bestDist < 10 then
+                VMtoChar[vm]       = bestChar
+                CharToVM[bestChar] = vm
+            end
+        end
+    end
+
+    _proxyCacheDirty = false
+end
+
+local function getProjectedModelBounds(model)
+    if not model then return nil end
+    local minX, minY =  math.huge,  math.huge
+    local maxX, maxY = -math.huge, -math.huge
+    local any = false
+
+    local head  = model:FindFirstChild("head")
+    local torso = model:FindFirstChild("torso")
+
+    local heightParts = {
+        head,
+        torso,
+        model:FindFirstChild("hip1"),
+        model:FindFirstChild("hip2"),
+        model:FindFirstChild("leg1"),
+        model:FindFirstChild("leg2"),
+    }
+
+    for _, d in ipairs(heightParts) do
+        if d and d:IsA("BasePart") and d.Transparency < 1 then
+            local cf   = d.CFrame
+            local half = d.Size * 0.5
+            local hx, hy, hz = half.X, half.Y, half.Z
+            local isWidth = (d == head or d == torso)
+
+            _cb[1] = cf * Vector3.new(-hx, -hy, -hz)
+            _cb[2] = cf * Vector3.new(-hx, -hy,  hz)
+            _cb[3] = cf * Vector3.new(-hx,  hy, -hz)
+            _cb[4] = cf * Vector3.new(-hx,  hy,  hz)
+            _cb[5] = cf * Vector3.new( hx, -hy, -hz)
+            _cb[6] = cf * Vector3.new( hx, -hy,  hz)
+            _cb[7] = cf * Vector3.new( hx,  hy, -hz)
+            _cb[8] = cf * Vector3.new( hx,  hy,  hz)
+
+            for i = 1, 8 do
+                local p, on = _Camera:WorldToViewportPoint(_cb[i])
+                if on and p.Z > 0 then
+                    any = true
+                    if p.Y < minY then minY = p.Y end
+                    if p.Y > maxY then maxY = p.Y end
+                    if isWidth then
+                        if p.X < minX then minX = p.X end
+                        if p.X > maxX then maxX = p.X end
+                    end
+                end
+            end
+        end
+    end
+
+    if minX == math.huge or maxX == -math.huge then
+        if torso and torso:IsA("BasePart") then
+            local p, on = _Camera:WorldToViewportPoint(torso.Position)
+            if on and p.Z > 0 then
+                minX = p.X - 8
+                maxX = p.X + 8
+            end
+        end
+    end
+
+    if not any then return nil end
+    return minX, minY, maxX, maxY
+end
+
 local function createNameLabel(character)
     if ActiveNames[character] then return end
     local label = Instance.new("TextLabel")
@@ -144,89 +267,6 @@ local function createNameLabel(character)
     ActiveNames[character]     = label
 end
 
-local function getMatchingViewmodel(character)
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    local viewmodels = Workspace:FindFirstChild("Viewmodels")
-    if not viewmodels then return nil end
-    local closest, closestDist = nil, math.huge
-    for _, vm in pairs(viewmodels:GetChildren()) do
-        local vmTorso = vm:FindFirstChild("torso")
-        if vmTorso then
-            local d = (vmTorso.Position - root.Position).Magnitude
-            if d < closestDist then
-                closestDist = d
-                closest = vm
-            end
-        end
-    end
-    return closest
-end
-
-local function getProjectedModelBounds(model)
-    if not model then return nil end
-    local minX, minY = math.huge,  math.huge
-    local maxX, maxY = -math.huge, -math.huge
-    local any = false
-
-    local widthParts = {
-        model:FindFirstChild("head"),
-        model:FindFirstChild("torso"),
-    }
-    local heightParts = {
-        model:FindFirstChild("head"),
-        model:FindFirstChild("torso"),
-        model:FindFirstChild("hip1"),
-        model:FindFirstChild("hip2"),
-        model:FindFirstChild("leg1"),
-        model:FindFirstChild("leg2"),
-    }
-
-    local widthSet = {}
-    for _, p in ipairs(widthParts) do if p then widthSet[p] = true end end
-
-    for _, d in ipairs(heightParts) do
-        if d and d:IsA("BasePart") and d.Transparency < 1 then
-            local half = d.Size * 0.5
-            local corners = {
-                d.CFrame * Vector3.new(-half.X, -half.Y, -half.Z),
-                d.CFrame * Vector3.new(-half.X, -half.Y,  half.Z),
-                d.CFrame * Vector3.new(-half.X,  half.Y, -half.Z),
-                d.CFrame * Vector3.new(-half.X,  half.Y,  half.Z),
-                d.CFrame * Vector3.new( half.X, -half.Y, -half.Z),
-                d.CFrame * Vector3.new( half.X, -half.Y,  half.Z),
-                d.CFrame * Vector3.new( half.X,  half.Y, -half.Z),
-                d.CFrame * Vector3.new( half.X,  half.Y,  half.Z),
-            }
-            for _, worldPos in ipairs(corners) do
-                local p, on = _Camera:WorldToViewportPoint(worldPos)
-                if on and p.Z > 0 then
-                    any = true
-                    if p.Y < minY then minY = p.Y end
-                    if p.Y > maxY then maxY = p.Y end
-                    if widthSet[d] then
-                        if p.X < minX then minX = p.X end
-                        if p.X > maxX then maxX = p.X end
-                    end
-                end
-            end
-        end
-    end
-
-    if minX == math.huge or maxX == -math.huge then
-        local torso = model:FindFirstChild("torso")
-        if torso and torso:IsA("BasePart") then
-            local p, on = _Camera:WorldToViewportPoint(torso.Position)
-            if on and p.Z > 0 then
-                minX = p.X - 8
-                maxX = p.X + 8
-            end
-        end
-    end
-    if not any then return nil end
-    return minX, minY, maxX, maxY
-end
-
 local function updateNameLabel(character, label)
     local player = getRealPlayerFromCharacter(character)
     if not player then label.Visible = false return end
@@ -240,7 +280,7 @@ local function updateNameLabel(character, label)
     if not OnScreen or dist > ESP.MaxDistance then label.Visible = false return end
 
     local centerX, topY
-    local matchedVM = getMatchingViewmodel(character)
+    local matchedVM = CharToVM[character]
     if matchedVM then
         local x0, y0, x1 = getProjectedModelBounds(matchedVM)
         if x0 then
@@ -298,18 +338,35 @@ local function hasTeamHighlight(model)
 end
 
 Workspace.ChildAdded:Connect(function(child)
-    if child:IsA("Highlight") then table.clear(TeamHighlightCache) end
+    if child:IsA("Highlight") then
+        table.clear(TeamHighlightCache)
+        return
+    end
+    task.defer(function()
+        if isRealCharacter(child) then
+            RealCharacterSet[child] = true
+            markProxyCacheDirty()
+        end
+    end)
 end)
 
 Workspace.ChildRemoved:Connect(function(child)
-    if ActiveNames[child] then removeNameLabel(child) end
+    if child:IsA("Highlight") then
+        table.clear(TeamHighlightCache)
+        return
+    end
+    if RealCharacterSet[child] then
+        RealCharacterSet[child] = nil
+        CharToVM[child] = nil
+        removeNameLabel(child)
+        markProxyCacheDirty()
+    end
 end)
 
 local function isValidPlayer(model)
     if not model or not model.Parent then return false end
     if model.Name == "LocalViewmodel" then return false end
-    local viewmodels = Workspace:FindFirstChild("Viewmodels")
-    if not viewmodels or model.Parent ~= viewmodels then return false end
+    if not _Viewmodels or model.Parent ~= _Viewmodels then return false end
     local torso = model:FindFirstChild("torso")
     if not torso or not torso:IsA("BasePart") then return false end
     return true
@@ -404,28 +461,13 @@ local function ProcessSkeleton(character, skData)
     end
 end
 
-local function getRealCharacterFromViewmodel(model)
-    local vmTorso = model:FindFirstChild("torso")
-    if not vmTorso then return nil end
-    for _, character in pairs(Workspace:GetChildren()) do
-        if isRealCharacter(character) then
-            local root = character:FindFirstChild("HumanoidRootPart")
-            if root and (root.Position - vmTorso.Position).Magnitude < 5 then
-                return character
-            end
-        end
-    end
-    return nil
-end
-
-
 local function ProcessESP(model, espData)
     local el = espData.elements
 
     local function Hide()
-        el.Box.Visible    = false
-        el.Weapon.Visible = false
-        el.Chams.Enabled  = false
+        el.Box.Visible         = false
+        el.Weapon.Visible      = false
+        el.Chams.Enabled       = false
         el.HealthBarBG.Visible = false
         el.LTH.Visible = false; el.LTV.Visible = false
         el.RTH.Visible = false; el.RTV.Visible = false
@@ -442,6 +484,7 @@ local function ProcessESP(model, espData)
         end)
         return
     end
+
     local torso = model:FindFirstChild("torso")
     if not torso or torso.Transparency >= 1 then Hide() return end
     if ESP.Drawing.TeamCheck.Enabled and hasTeamHighlight(model) then Hide() return end
@@ -453,6 +496,8 @@ local function ProcessESP(model, espData)
         removeSkeleton(model)
         return
     end
+
+    local yInset = _GuiInsetY
 
     if ESP.FadeOut.OnDistance then
         local fade = math.max(0.1, 1 - (Dist / ESP.MaxDistance))
@@ -481,10 +526,12 @@ local function ProcessESP(model, espData)
     y0 = y0 - padY; y1 = y1 + padY
     w = math.max(2, x1 - x0)
     h = math.max(2, y1 - y0)
+
     local cLen   = ESP.Drawing.Boxes.Corner.Length
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local dynCL  = math.min(cLen, w * 0.2, h * 0.2)
-    local yInset = _GuiInsetY or 0
+    local y0yi   = y0 - yInset
+    local y1yi   = y1 - yInset
 
     local chams = el.Chams
     chams.Adornee      = model
@@ -498,10 +545,8 @@ local function ProcessESP(model, espData)
         chams.OutlineTransparency = (ESP.Drawing.Chams.Outline_Transparency / 100)
     end
 
-    local cv   = ESP.Drawing.Boxes.Corner.Enabled
-    local cc   = ESP.Drawing.Boxes.Corner.RGB
-    local y0yi = y0 - yInset
-    local y1yi = y1 - yInset
+    local cv = ESP.Drawing.Boxes.Corner.Enabled
+    local cc = ESP.Drawing.Boxes.Corner.RGB
     el.LTH.Visible = cv; el.LTH.Position = UDim2.new(0, x0,           0, y0yi);          el.LTH.Size = UDim2.new(0, dynCL,  0, cThick); el.LTH.BackgroundColor3 = cc
     el.LTV.Visible = cv; el.LTV.Position = UDim2.new(0, x0,           0, y0yi);          el.LTV.Size = UDim2.new(0, cThick, 0, dynCL);  el.LTV.BackgroundColor3 = cc
     el.RTH.Visible = cv; el.RTH.Position = UDim2.new(0, x1 - dynCL,  0, y0yi);          el.RTH.Size = UDim2.new(0, dynCL,  0, cThick); el.RTH.BackgroundColor3 = cc
@@ -513,15 +558,15 @@ local function ProcessESP(model, espData)
 
     local full   = ESP.Drawing.Boxes.Full.Enabled
     local filled = ESP.Drawing.Boxes.Filled.Enabled
-    el.Box.Position           = UDim2.new(0, x0, 0, y0 - yInset)
-    el.Box.Size               = UDim2.new(0, w,  0, h)
-    el.Box.Visible            = full or (cv and filled)
+    el.Box.Position               = UDim2.new(0, x0, 0, y0 - yInset)
+    el.Box.Size                   = UDim2.new(0, w,  0, h)
+    el.Box.Visible                = full or (cv and filled)
     el.Box.BackgroundTransparency = filled and ESP.Drawing.Boxes.Filled.Transparency or 1
-    el.Outline.Enabled        = full and ESP.Drawing.Boxes.Gradient
+    el.Outline.Enabled            = full and ESP.Drawing.Boxes.Gradient
 
     if ESP.Drawing.Boxes.Animate then
         local dt = _Tick - espData.lastTick
-        espData.rotAngle = espData.rotAngle + dt * ESP.Drawing.Boxes.RotationSpeed * math.cos(math.pi/4 * _Tick - math.pi/2)
+        espData.rotAngle = espData.rotAngle + dt * ESP.Drawing.Boxes.RotationSpeed * math.cos(math.pi / 4 * _Tick - math.pi / 2)
         el.Gradient1.Rotation = espData.rotAngle
         el.Gradient2.Rotation = espData.rotAngle
     else
@@ -530,30 +575,30 @@ local function ProcessESP(model, espData)
     end
     espData.lastTick = _Tick
 
-    el.HealthBarBG.Visible = ESP.Drawing.HealthBar.Enabled
+    el.HealthBarBG.Visible          = ESP.Drawing.HealthBar.Enabled
     el.HealthBarBG.BackgroundColor3 = Color3.fromRGB(30, 10, 40)
-if ESP.Drawing.HealthBar.Enabled then
-    local hp, maxHp = 100, 100
-    local realChar = getRealCharacterFromViewmodel(model)
-    if realChar then
-        local hum = realChar:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hp    = hum.Health
-            maxHp = hum.MaxHealth
+    if ESP.Drawing.HealthBar.Enabled then
+        local hp, maxHp = 100, 100
+        local realChar  = VMtoChar[model]
+        if realChar then
+            local hum = realChar:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hp    = hum.Health
+                maxHp = hum.MaxHealth
+            end
         end
+        local hpPct    = math.clamp(hp / math.max(maxHp, 1), 0, 1)
+        local barWidth = 4
+        el.HealthBarBG.Position = UDim2.new(0, x0 - barWidth - 2, 0, y0yi)
+        el.HealthBarBG.Size     = UDim2.new(0, barWidth, 0, h)
+        el.HealthBar.Size       = UDim2.new(1, 0, hpPct, 0)
+        el.HealthBar.Position   = UDim2.new(0, 0, 1 - hpPct, 0)
+        el.HealthBar.BackgroundColor3 = Color3.fromRGB(
+            255,
+            math.floor(220 * hpPct),
+            math.floor(200 * (1 - hpPct))
+        )
     end
-    local hpPct = math.clamp(hp / math.max(maxHp, 1), 0, 1)
-    local barWidth = 4
-    el.HealthBarBG.Position = UDim2.new(0, x0 - barWidth - 2, 0, y0yi)
-    el.HealthBarBG.Size     = UDim2.new(0, barWidth, 0, h)
-    el.HealthBar.Size       = UDim2.new(1, 0, hpPct, 0)
-    el.HealthBar.Position   = UDim2.new(0, 0, 1 - hpPct, 0)
-   el.HealthBar.BackgroundColor3 = Color3.fromRGB(
-    255,
-    math.floor(220 * hpPct),
-    math.floor(200 * (1 - hpPct))
-)
-end
 
     el.Weapon.Visible = ESP.Drawing.Weapons.Enabled
     if ESP.Drawing.Weapons.Enabled then
@@ -577,44 +622,42 @@ local function st()
         MasterConnection:Disconnect()
         MasterConnection = nil
     end
+
     MasterConnection = RunService.RenderStepped:Connect(function()
         _Camera   = Workspace.CurrentCamera
         _CamPos   = _Camera.CFrame.Position
         _ViewSize = _Camera.ViewportSize
         _Tick     = tick()
+        _frameCount = _frameCount + 1
+
         local okInset, inset = pcall(function() return GuiService:GetGuiInset() end)
         if okInset and inset then
-            if ScreenGui and ScreenGui.IgnoreGuiInset then
-                _GuiInsetY = 0
-            else
-                _GuiInsetY = inset.Y
-            end
+            _GuiInsetY = (ScreenGui and ScreenGui.IgnoreGuiInset) and 0 or inset.Y
         else
             _GuiInsetY = 0
+        end
+
+        if _proxyCacheDirty or (_frameCount % PROXY_REFRESH_INTERVAL == 0) then
+            rebuildProxyCache()
         end
 
         for model, espData in pairs(ActiveESPs) do
             ProcessESP(model, espData)
         end
+
         for model, skData in pairs(ActiveSkeletons) do
             ProcessSkeleton(model, skData)
         end
 
         if ESP.Enabled and ESP.Drawing.Names.Enabled then
-            for _, character in pairs(Workspace:GetChildren()) do
-                if isRealCharacter(character) then
-                    if not ActiveNames[character] then
-                        createNameLabel(character)
-                    end
-                    updateNameLabel(character, ActiveNames[character])
-                else
-                    if ActiveNames[character] then
-                        removeNameLabel(character)
-                    end
+            for character in pairs(RealCharacterSet) do
+                if not ActiveNames[character] then
+                    createNameLabel(character)
                 end
+                updateNameLabel(character, ActiveNames[character])
             end
         else
-            for character, label in pairs(ActiveNames) do
+            for _, label in pairs(ActiveNames) do
                 label.Visible = false
             end
         end
@@ -730,26 +773,26 @@ local function CreateESP(CharacterModel)
         DepthMode           = "AlwaysOnTop",
     })
 
+    local HealthBarBG = Functions:Create("Frame", {
+        Parent               = folder, Name = "HBG",
+        BackgroundColor3     = Color3.fromRGB(30, 10, 40),
+        BackgroundTransparency = 0.3,
+        BorderSizePixel      = 0,
+    })
+
+    local HealthBar = Functions:Create("Frame", {
+        Parent               = HealthBarBG, Name = "HB",
+        BackgroundColor3     = Color3.fromRGB(0, 255, 0),
+        BackgroundTransparency = 0,
+        BorderSizePixel      = 0,
+        Position             = UDim2.new(0, 0, 0, 0),
+        Size                 = UDim2.new(1, 0, 1, 0),
+    })
+
     local cThick = ESP.Drawing.Boxes.Corner.Thickness
     local cLen   = ESP.Drawing.Boxes.Corner.Length
     local cc     = ESP.Drawing.Boxes.Corner.RGB
 
-    local HealthBarBG = Functions:Create("Frame", {
-    Parent = folder, Name = "HBG",
-    BackgroundColor3 = Color3.fromRGB(30, 10, 40), 
-    BackgroundTransparency = 0.3,                  
-    BorderSizePixel = 0,
-})
-local HealthBar = Functions:Create("Frame", {
-    Parent = HealthBarBG, Name = "HB",
-    BackgroundColor3 = Color3.fromRGB(0, 255, 0),
-    BackgroundTransparency = 0,
-    BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 0),
-    Size = UDim2.new(1, 0, 1, 0),
-})
-
-    
     local function mc(name, w, h)
         return Functions:Create("Frame", {
             Parent               = folder, Name = name,
@@ -766,13 +809,13 @@ local HealthBar = Functions:Create("Frame", {
         rotAngle = -45,
         lastTick = tick(),
         elements = {
-            Name      = Name,
-            Weapon    = Weapon,
-            Box       = Box,
-            Gradient1 = Gradient1,
-            Gradient2 = Gradient2,
-            Outline   = Outline,
-            Chams     = Chams,
+            Name        = Name,
+            Weapon      = Weapon,
+            Box         = Box,
+            Gradient1   = Gradient1,
+            Gradient2   = Gradient2,
+            Outline     = Outline,
+            Chams       = Chams,
             HealthBarBG = HealthBarBG,
             HealthBar   = HealthBar,
             LTH = mc("LTH", cLen,   cThick),
@@ -787,6 +830,7 @@ local HealthBar = Functions:Create("Frame", {
     }
 end
 
+
 function Functions:CleanAllESPs()
     for model, espData in pairs(ActiveESPs) do
         if espData.folder then espData.folder:Destroy() end
@@ -797,9 +841,8 @@ end
 
 ESP.RefreshESPs = function()
     Functions:CleanAllESPs()
-    local viewmodels = Workspace:FindFirstChild("Viewmodels")
-    if not viewmodels then return end
-    for _, model in pairs(viewmodels:GetChildren()) do
+    if not _Viewmodels then return end
+    for _, model in pairs(_Viewmodels:GetChildren()) do
         if model:IsA("Model") then
             task.defer(CreateESP, model)
         end
@@ -809,20 +852,24 @@ end
 ESP.CleanAllESPs = function() Functions:CleanAllESPs() end
 
 local function mvm()
-    local viewmodels = Workspace:FindFirstChild("Viewmodels")
-    if not viewmodels then return end
-    for _, v in pairs(viewmodels:GetChildren()) do
+    _Viewmodels = Workspace:FindFirstChild("Viewmodels")
+    if not _Viewmodels then return end
+
+    for _, v in pairs(_Viewmodels:GetChildren()) do
         if v:IsA("Model") then task.defer(CreateESP, v) end
     end
-    viewmodels.ChildAdded:Connect(function(v)
+
+    _Viewmodels.ChildAdded:Connect(function(v)
         if v:IsA("Model") then
             task.defer(CreateESP, v)
             if ESP.Drawing.Skeleton.Enabled then
                 task.defer(createSkeletonESP, v)
             end
+            markProxyCacheDirty()
         end
     end)
-    viewmodels.ChildRemoved:Connect(function(v)
+
+    _Viewmodels.ChildRemoved:Connect(function(v)
         local espData = ActiveESPs[v]
         if espData then
             if espData.folder then espData.folder:Destroy() end
@@ -830,7 +877,17 @@ local function mvm()
         end
         removeSkeleton(v)
         TeamHighlightCache[v] = nil
+        VMtoChar[v] = nil
+        markProxyCacheDirty()
     end)
+end
+
+local function watchRealCharacters()
+    for _, child in pairs(Workspace:GetChildren()) do
+        if isRealCharacter(child) then
+            RealCharacterSet[child] = true
+        end
+    end
 end
 
 ESP.ToggleSkeleton = function(enabled)
@@ -838,9 +895,8 @@ ESP.ToggleSkeleton = function(enabled)
     if not enabled then
         Functions:CleanAllSkeletons()
     else
-        local viewmodels = Workspace:FindFirstChild("Viewmodels")
-        if viewmodels then
-            for _, model in pairs(viewmodels:GetChildren()) do
+        if _Viewmodels then
+            for _, model in pairs(_Viewmodels:GetChildren()) do
                 if model:IsA("Model") and isValidPlayer(model) then
                     createSkeletonESP(model)
                 end
@@ -873,6 +929,7 @@ ESP.SetCornerColor     = function(c) if typeof(c) == "Color3" then ESP.Drawing.B
 ESP.SetCornerThickness = function(t) if type(t) == "number" and t > 0 then ESP.Drawing.Boxes.Corner.Thickness = t end end
 ESP.SetCornerLength    = function(l) if type(l) == "number" and l > 0 then ESP.Drawing.Boxes.Corner.Length    = l end end
 
+watchRealCharacters()
 mvm()
 st()
 
